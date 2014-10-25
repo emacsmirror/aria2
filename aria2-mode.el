@@ -5,7 +5,7 @@
 ;; Author: Łukasz Gruner <lukasz@gruner.lu>
 ;; Maintainer: Łukasz Gruner <lukasz@gruner.lu>
 ;; Version: 1
-;; Package-Requires: ((json "8") (url))
+;; Package-Requires: ((emacs "24.4")(json "1.4")(eieio "1.4"))
 ;; URL: https://bitbucket.org/ukaszg/aria2-mode
 ;; Created: 19/10/2014
 ;; Keywords: download bittorrent aria2
@@ -73,8 +73,14 @@
   :type 'directory
   :group 'aria2)
 
+(defvar aria2-rcp-listen-port)
+
+(defsubst aria2--url ()
+  "Returns encoded url, wiith proper port value."
+  (url-encode-url (format "http://localhost:%d/jsonrpc" aria2-rcp-listen-port)))
+
 (defcustom aria2-rcp-listen-port 6800
-  "Port on which JSONRCP server will listen."
+  "Port on which JSON RCP server will listen."
   :type '(integer :tag "Http port")
   :group 'aria2
   :set #'(lambda (sym value)
@@ -100,10 +106,6 @@
   "File used to persist controller status between Emacs restarts.")
 
 ;;; Utils start here.
-
-(defsubst aria2--url ()
-  "Returns encoded url, wiith proper port value."
-  (url-encode-url (format "http://localhost:%d/jsonrpc" aria2-rcp-listen-port)))
 
 (defsubst aria2--base64-encode-file (path)
   "Returns base64-encoded string with contents of file on PATH."
