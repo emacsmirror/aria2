@@ -100,6 +100,36 @@ process on entering downloads list."
   (expand-file-name "aria2-controller.eieio" user-emacs-directory)
   "File used to persist controller status between Emacs restarts.")
 
+;;; Faces definitions start here.
+
+(defface aria2-file-face `((t :inherit mode-line-buffer-id))
+  "Face for download name."
+  :group 'aria2)
+
+(defface aria2-status-face `((t :inherit font-lock-constant-face))
+  "Face for status."
+  :group 'aria2)
+
+(defface aria2-type-face `((t :inherit font-lock-builtin-face))
+  "Face for download type."
+  :group 'aria2)
+
+(defface aria2-done-face `((t :inherit font-lock-doc-face))
+  "Face for % done."
+  :group 'aria2)
+
+(defface aria2-download-face `((t :inherit font-lock-string-face))
+  "Face for download speed."
+  :group 'aria2)
+
+(defface aria2-upload-face `((t :inherit font-lock-comment-face))
+  "Face for upload speed."
+  :group 'aria2)
+
+(defface aria2-error-face `((t :inherit font-lock-warning-face))
+  "Face for error messages."
+  :group 'aria2)
+
 ;;; Utils start here.
 
 (defsubst aria2--url ()
@@ -465,13 +495,13 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (push (list
              (alist-get 'gid e)
              (vector
-              (aria2--list-entries-File e)
-              (aria2--list-entries-Status e)
-              (aria2--list-entries-Type e)
-              (aria2--list-entries-Done e)
-              (aria2--list-entries-Download e)
-              (aria2--list-entries-Upload e)
-              (aria2--list-entries-Err e)))
+              (list (aria2--list-entries-File e) 'face 'aria2-file-face)
+              (list (aria2--list-entries-Status e) 'face 'aria2-status-face)
+              (list (aria2--list-entries-Type e) 'face 'aria2-type-face)
+              (list (aria2--list-entries-Done e) 'face 'aria2-done-face)
+              (list (aria2--list-entries-Download e) 'face 'aria2-download-face)
+              (list (aria2--list-entries-Upload e) 'face 'aria2-upload-face)
+              (list (aria2--list-entries-Err e) 'face 'aria2-error-face)))
             entries))))
 
 (defun aria2--persist-settings ()
@@ -605,8 +635,7 @@ With prefix start search in $HOME."
     (define-key map "M-n" 'aria2-down-up-in-list)
     (define-key map "g" 'revert-buffer)
     (define-key map "q" 'quit-window)
-    (define-key map "Q" 'kill-buffer)
-    (define-key map "C-q" 'aria2-terminate)
+    (define-key map "Q" 'aria2-terminate)
     (define-key map "P" 'aria2-pause)
     (define-key map "U" 'aria2-unpause)
     (define-key map "F" 'aria2-add-file)
