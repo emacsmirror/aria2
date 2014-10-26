@@ -221,7 +221,6 @@ process on entering downloads list."
                          (append
                           aria2-custom-args
                           `("-D" ;; Start in daemon mode (won't be managed by Emacs).
-                            "-q" ;; Be quiet.
                             "--enable-rpc=true"
                             ,(format "--rpc-secret=%s" (oref this secret))
                             ,(format "--rpc-listen-port=%s" aria2-rcp-listen-port)
@@ -404,9 +403,9 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defvar aria2--cc nil "Control center object container.")
 
 (defconst aria2--list-format (vector
-                              '("File" 40 t) '("Status" 7 t) '("Type" 9 t)
-                              '("Done" 4 t) '("Download" 9 t) '("Upload" 9 t)
-                              '("Error" 5 nil))
+                              '("File" 40 t) '("Status" 7 t) '("Type" 13 t)
+                              '("Done" 4 t) '("Download" 12 t) '("Upload" 12 t)
+                              '("Error" 0 nil))
   "Format for downloads list columns.")
 
 (defconst aria2--tell-keys
@@ -558,14 +557,19 @@ With prefix start search in $HOME."
 (defun aria2-move-up-in-list (arg)
   "Move item one row up, with prefix move to beginning of list."
   (interactive "P")
-  (changePosition (aria2--get-gid) (if (equal nil arg) -1 0) (if (equal nil arg) "POS_CUR" "POS_SET"))
+  (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) -1 0) (if (equal nil arg) "POS_CUR" "POS_SET"))
   (revert-buffer))
 
 (defun aria2-down-up-in-list (arg)
   "Move item one row down, with prefix move to end of list."
   (interactive "P")
-  (changePosition (aria2--get-gid) (if (equal nil arg) 1 0) (if (equal nil arg) "POS_CUR" "POS_END"))
+  (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) 1 0) (if (equal nil arg) "POS_CUR" "POS_END"))
   (revert-buffer))
+
+(defun aria2-terminate ()
+  (interactive)
+  (shutdown aria2--cc)
+  (kill-buffer aria2-list-buffer-name))
 
 (easy-menu-define aria2-menu nil "Aria2 Menu"
   `("Aria2"
@@ -595,19 +599,14 @@ With prefix start search in $HOME."
     (define-key map "k" 'previous-line)
     (define-key map "C-p" 'previous-line)
     (define-key map [up] 'previous-line)
-    (define-key map "S-k" 'aria2-move-up-in-list)
-    (define-key map "S-n" 'aria2-move-up-in-list)
-    (define-key map "C-S-n" 'aria2-move-up-in-list)
-    (define-key map [C-down] 'aria2-move-up-in-list)
-    (define-key map "C-k" 'aria2-move-up-in-list)
-    (define-key map "S-j" 'aria2-down-up-in-list)
-    (define-key map "S-n" 'aria2-down-up-in-list)
-    (define-key map "C-S-n" 'aria2-down-up-in-list)
-    (define-key map [C-up] 'aria2-down-up-in-list)
-    (define-key map "C-j" 'aria2-down-up-in-list)
+    (define-key map "M-k" 'aria2-move-up-in-list)
+    (define-key map "M-n" 'aria2-move-up-in-list)
+    (define-key map "M-j" 'aria2-down-up-in-list)
+    (define-key map "M-n" 'aria2-down-up-in-list)
     (define-key map "g" 'revert-buffer)
     (define-key map "q" 'quit-window)
-    (define-key map "S-q" 'kill-buffer)
+    (define-key map "Q" 'kill-buffer)
+    (define-key map "C-q" 'aria2-terminate)
     (define-key map "P" 'aria2-pause)
     (define-key map "U" 'aria2-unpause)
     (define-key map "F" 'aria2-add-file)
@@ -647,7 +646,8 @@ With prefix start search in $HOME."
   (tabulated-list-print)
   ;; refresh list periodically
   (setq aria2--refresh-timer
-        (run-at-time t aria2-refresh-timeout #'aria2--refresh)))
+        (run-at-time t aria2-refresh-timeout #'aria2--refresh))
+  (hl-line-mode 1))
 
 (with-eval-after-load 'evil-states
   (add-to-list 'evil-emacs-state-modes 'aria2-mode))
