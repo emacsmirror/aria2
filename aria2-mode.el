@@ -520,12 +520,13 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
     (shutdown aria2--cc t)))
 
 (defun aria2--refresh ()
-  "Refreshes download list buffer, and queues next refresh after `aria2-refresh-timeout'."
+  "Refreshes download list buffer."
   (let ((buf (get-buffer aria2-list-buffer-name)))
     (if buf
         (with-current-buffer buf
           (revert-buffer))
-      (cancel-timer aria2--refresh-timer))))
+      (cancel-timer aria2--refresh-timer)
+      (setq aria2-refresh-timer nil))))
 
 (defsubst aria2--get-gid ()
   (get-text-property  (point) 'tabulated-list-id))
@@ -536,7 +537,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (if (equal arg nil)
       (pause aria2--cc (aria2--get-gid))
     (pauseAll aria2--cc))
-  (revert-buffer))
+  (run-with-timer 2 nil #'revert-buffer))
 
 (defun aria2-unpause (arg)
   "Unpause, or unpauseAll with prefix."
@@ -573,8 +574,9 @@ With prefix start search in $HOME."
 (defun aria2-remove-download (arg)
   "Set download status to 'removed'."
   (interactive "P")
-  (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg)))
-  (revert-buffer))
+  (when (y-or-n-p "Really remove download?")
+    (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg)))
+    (revert-buffer)))
 
 (defun aria2-clean-removed-download (arg)
   "Clean download with 'removed' status."
@@ -598,8 +600,9 @@ With prefix start search in $HOME."
 
 (defun aria2-terminate ()
   (interactive)
-  (shutdown aria2--cc)
-  (kill-buffer aria2-list-buffer-name))
+  (when (y-or-n-p "Are you sure yo want to terminate aria2 process?")
+    (shutdown aria2--cc)
+    (kill-buffer aria2-list-buffer-name)))
 
 (easy-menu-define aria2-menu nil "Aria2 Menu"
   `("Aria2"
@@ -674,8 +677,9 @@ With prefix start search in $HOME."
   (setq tabulated-list-entries #'aria2--list-entries)
   (tabulated-list-print)
   ;; refresh list periodically
-  (setq aria2--refresh-timer
-        (run-at-time t aria2-refresh-timeout #'aria2--refresh))
+  (when (not aria2--refresh-timer)
+    (setq aria2--refresh-timer
+          (run-at-time t aria2-refresh-timeout #'aria2--refresh)))
   (hl-line-mode 1))
 
 (with-eval-after-load 'evil-states
