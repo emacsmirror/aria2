@@ -92,8 +92,8 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :type '(repeat (string :tag "Commandline argument."))
   :group 'aria2)
 
-(defvar aria2--debug nil
-  "Should json commands and replies be printed.  Also enables variable `url-debug' from url package.")
+(defvar aria2--debug t
+  "Should json commands and replies be printed.")
 
 (defconst aria2--cc-file
   (expand-file-name "aria2-controller.eieio" user-emacs-directory)
@@ -156,9 +156,9 @@ If nil Emacs will reattach itself to the process on entering downloads list."
 (define-error 'aria2-err-file-doesnt-exist     "File %s doesn't exist"                        'user-error)
 (define-error 'aria2-err-not-a-torrent-file    "This is not a .torrent file"                  'user-error)
 (define-error 'aria2-err-not-a-metalink-file   "This is not a .metalink file"                 'user-error)
-(define-error 'aria2-err-failed-to-start       "Failed to start %s %s"                        'error)
+(define-error 'aria2-err-failed-to-start       "Failed to start "                             'error)
 (define-error 'aria2-err-no-executable         "Couldn't find `aria2c' executable, aborting"  'error)
-(define-error 'aria2-err-no-such-position-type "Wrong position type \"%s\""                   'error)
+(define-error 'aria2-err-no-such-position-type "Wrong position type "                         'error)
 
 (defconst aria2--codes-to-errors-alist
   (list
@@ -265,7 +265,7 @@ If nil Emacs will reattach itself to the process on entering downloads list."
       (oset this pid (or (car (cl-remove-if-not #'aria2--is-aria-process-p (list-system-processes)))
                          -1))
       (unless (is-process-running this)
-        (signal 'aria2-err-failed-to-start '(aria2-executable (string-join options " ")))))))
+        (signal 'aria2-err-failed-to-start (concat aria2-executable " " (string-join options " ")))))))
 
 (defmethod make-request ((this aria2-controller) method &rest params)
   "Calls a remote METHOD with PARAMS. Returns response alist."
@@ -406,7 +406,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (make-request this "aria2.saveSession"))
 
 (defmethod shutdown ((this aria2-controller) &optional force)
-  "Shut down aria2c process. If FORCE don't wait for unregistering torrents."
+  "Shut down aria2c process.  If FORCE don't wait for unregistering torrents."
   (when (is-process-running this)
     (make-request this (if force "aria2.forceShutdown" "aria2.shutdown"))
     (oset this pid -1)))
@@ -420,11 +420,11 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (make-request this "aria2.getFiles" gid))
 
 (defmethod getPeers ((this aria2-controller) gid)
-  "Returns a list peers of the download denoted by GID."
+  "Return a list peers of the download denoted by GID."
   (make-request this "aria2.getPeers" gid))
 
 (defmethod getServers ((this aria2-controller) gid)
-  "Returns currently connected HTTP(S)/FTP servers of the download denoted by GID."
+  "Return currently connected HTTP(S)/FTP servers of the download denoted by GID."
   (make-request this "aria2.getServers" gid))
 
 ;;; Major mode settings start here
@@ -460,7 +460,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (let* ((file (elt (alist-get 'files e) 0))
              (uris (alist-get 'uris file))
              (uri1 (and (< 0 (length uris)) (elt uris 0))))
-        (and uri1 (file-name-extension uri1))
+        (and uri1 (car-safe (string-split uri1 ":")))
         (file-name-extension (alist-get 'path file)))
       "other"))
 
@@ -494,13 +494,13 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (push (list
              (alist-get 'gid e)
              (vector
-              (list (aria2--list-entries-File e) 'face 'aria2-file-face)
-              (list (aria2--list-entries-Status e) 'face 'aria2-status-face)
-              (list (aria2--list-entries-Type e) 'face 'aria2-type-face)
-              (list (aria2--list-entries-Done e) 'face 'aria2-done-face)
+              (list (aria2--list-entries-File e)     'face 'aria2-file-face)
+              (list (aria2--list-entries-Status e)   'face 'aria2-status-face)
+              (list (aria2--list-entries-Type e)     'face 'aria2-type-face)
+              (list (aria2--list-entries-Done e)     'face 'aria2-done-face)
               (list (aria2--list-entries-Download e) 'face 'aria2-download-face)
-              (list (aria2--list-entries-Upload e) 'face 'aria2-upload-face)
-              (list (aria2--list-entries-Err e) 'face 'aria2-error-face)))
+              (list (aria2--list-entries-Upload e)   'face 'aria2-upload-face)
+              (list (aria2--list-entries-Err e)      'face 'aria2-error-face)))
             entries))))
 
 (defun aria2--persist-settings ()
@@ -525,26 +525,32 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
         (with-current-buffer buf
           (revert-buffer))
       (cancel-timer aria2--refresh-timer)
-      (setq aria2-refresh-timer nil))))
+      (setq aria2--refresh-timer nil))))
 
 (defsubst aria2--get-gid ()
   (get-text-property  (point) 'tabulated-list-id))
 
-(defun aria2-pause (arg)
-  "Pause, or pauseAll with prefix."
-  (interactive "P")
-  (if (equal arg nil)
-      (pause aria2--cc (aria2--get-gid))
-    (pauseAll aria2--cc))
+(defsubst aria2--is-paused-p ()
+  (equal (elt (get-text-property (point) 'tabulated-list-entry) 2) "paused"))
+
+(defun aria2-pause ()
+  "Pause download."
+  (interactive)
+  (pause aria2--cc (aria2--get-gid))
   (run-with-timer 2 nil #'revert-buffer))
 
-(defun aria2-unpause (arg)
-  "Unpause, or unpauseAll with prefix."
-  (interactive "P")
-  (if (equal arg nil)
-      (unpause aria2--cc (aria2--get-gid))
-    (unpauseAll aria2--cc))
+(defun aria2-resume ()
+  "Resume paused download."
+  (interactive)
+  (unpause aria2--cc (aria2--get-gid))
   (revert-buffer))
+
+(defun aria2-toggle-pause ()
+  "Toggle 'paused' status for download."
+  (interactive)
+  (if (aria2--is-paused-p)
+      (aria2-resume)
+    (aria2-pause)))
 
 (defun aria2-add-file (arg)
   "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files.
@@ -575,10 +581,11 @@ With prefix start search in $HOME."
   (interactive "P")
   (when (y-or-n-p "Really remove download? ")
     (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg)))
-    (revert-buffer)))
+    (aria2-clean-removed-download nil)))
 
 (defun aria2-clean-removed-download (arg)
-  "Clean download with 'removed' status."
+  "Clean download with 'removed/completed/error' status.
+With prefix remove all applicable downloads."
   (interactive "P")
   (if (equal nil arg)
       (removeDownloadResult aria2--cc (aria2--get-gid))
@@ -606,16 +613,13 @@ With prefix start search in $HOME."
 
 (easy-menu-define aria2-menu nil "Aria2 Menu"
   `("Aria2"
-    ["Pause" aria2-pause :help "Pause current download"]
-    ["Unpause" aria2-unpause :help "Unpause current download"]
+    ["Pause" aria2-pause :help "Pause current download"
+     :visble (not (aria2--is-paused-p))]
+    ["Resume" aria2-unpause :help "Resume current download"
+     :visible (aria2--is-paused-p)]
     "--"
-    ["Remove" aria2-remove-download :help "Set current download status to `removed'"]
-    ["Clean" (lambda () (aria2-clean-removed-download t)) :help "Clean all `removed' downloads from list"]
-    "--"
-    ["Move Up" aria2-move-up-in-list :help "Move file up in queue"]
-    ["Move Down" aria2-move-down-in-list :help "Move file down in queue"]
-    ["Move to Beginning" (lambda () (aria2-move-up-in-list t)) :help "Set file as first in queue"]
-    ["Move to End" (lambda () (aria2-move-down-in-list t)) :help "Set file as last in queue"]
+    ["Remove" aria2-remove-download :help "Stop download and remove it."]
+    ["Clean" (lambda () (aria2-clean-removed-download t)) :help "Clean all `removed/completed/errored' downloads from list"]
     "--"
     ["Refresh" revert-buffer :help "Reload download list items"]))
 
@@ -637,12 +641,12 @@ With prefix start search in $HOME."
     (define-key map "-" 'aria2-down-up-in-list)
     (define-key map "_" 'aria2-down-up-in-list)
     (define-key map "g" 'revert-buffer)
+    (define-key map "G" 'revert-buffer)
     (define-key map "q" 'quit-window)
     (define-key map "Q" 'aria2-terminate)
-    (define-key map "P" 'aria2-pause)
-    (define-key map "U" 'aria2-unpause)
+    (define-key map "P" 'aria2-toggle-pause)
     (define-key map "F" 'aria2-add-file)
-    (define-key map "R" 'aria2-add-uris)
+    (define-key map "U" 'aria2-add-uris)
     (define-key map "D" 'aria2-remove-download)
     (define-key map "C" 'aria2-clean-removed-download)
     (define-key map [mouse-3] 'aria2-context-menu)
