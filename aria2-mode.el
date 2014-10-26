@@ -262,7 +262,8 @@ process on entering downloads list."
       (setq json-response (json-read))
       (kill-buffer))
     (when aria2--debug (message "RECV: %s" json-response))
-    (or (alist-get 'result json-response) json-response)))
+    (or (alist-get 'result json-response)
+        (error "ERROR: %s" (alist-get 'message (alist-get 'error json-response))))))
 
 ;;; Api implementation starts here
 
@@ -301,7 +302,7 @@ When sending magnet link, URLS must have only one element."
 
 (defmethod pauseAll ((this aria2-controller) &optional force)
   "Pause all downloads. If FORCE don't unregister download at bittorrent tracker."
-  (make-request this (if force "aria2.forcePauseAll" "aria2.pauseAll") gid))
+  (make-request this (if force "aria2.forcePauseAll" "aria2.pauseAll")))
 
 (defmethod unpause ((this aria2-controller) gid)
   "Unpause download identified by GID."
@@ -478,7 +479,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   "Persist controller settings, or clear state when aria2c isn't running."
   (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
   (if (and aria2--cc (is-process-running aria2--cc))
-      (eieio-persistent-save aria2--cc)
+      (eieio-persistent-save aria2--cc aria2--cc-file)
     (when (file-exists-p aria2--cc-file)
       (delete-file aria2--cc-file))))
 
@@ -496,10 +497,66 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
     (setq aria2--refresh-timer
           (run-with-timer aria2-refresh-timeout nil #'aria2--refresh-and-repeat))))
 
+(defsubst aria2--get-gid ()
+  (get-text-property  (point) 'tabulated-list-id))
+
+(defun aria2-pause (arg)
+  "Pause, or pauseAll with prefix."
+  (interactive "P")
+  (if (equal arg nil)
+      (pause aria2--cc (aria2--get-gid))
+    (pauseAll aria2--cc)))
+
+(defun aria2-unpause (arg)
+  "Unpause, or unpauseAll with prefix."
+  (interactive "P")
+  (if (equal arg nil)
+      (unpause aria2--cc (aria2--get-gid))
+    (unpauseAll aria2--cc)))
+
+(defun aria2-add-file (arg)
+  "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files.
+With prefix start search in $HOME."
+  (interactive "P")
+  (let ((chosen-file
+         (expand-file-name
+          (read-file-name
+           "Choose .meta4, .metalink or .torrent file: "
+           (if (equal arg nil) default-directory "~/") nil nil nil
+           #'(lambda (f)
+               (or (file-directory-p f)
+                   (string-match-p "\\.\\(?:meta\\(?:4\\|link\\)\\|torrent\\)$" f)))))))
+    (if (or (string-blank-p chosen-file)
+            (not (file-exists-p chosen-file)))
+        (message "No file selected.")
+      (if (string-match-p "\\.torrent$" chosen-file)
+          (addTorrent aria2--cc chosen-file)
+        (addMetalink aria2--cc chosen-file)))))
+
+(defun aria2-add-uris (arg)
+  (interactive "P")
+  ) ;;TODO - popup buffer with widget list.
+
+(defun aria2-remove-download (arg)
+  (interactive "P")
+  (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg))))
+
+(defun aria2-clean-removed-download (arg)
+  (interactive "P")
+  (if (equal nil arg)
+      (removeDownloadResult aria2--cc (aria2--get-gid))
+    (purgeDownloadResult aria2--cc)))
+
 (defvar aria2-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "j" 'next-line)
     (define-key map "k" 'previous-line)
+    (define-key map "P" 'aria2-pause)
+    (define-key map "u" 'aria2-unpause)
+    (define-key map "f" 'aria2-add-file)
+    (define-key map "r" 'aria2-add-uris)
+    (define-key map "D" 'aria2-remove-download)
+    (define-key map "c" 'aria2-clean-removed-download)
     map)
   "Keymap for `aria2-mode'.")
 
