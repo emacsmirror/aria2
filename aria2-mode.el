@@ -48,8 +48,8 @@
   :prefix "aria2-")
 
 (defcustom aria2-kill-process-on-emacs-exit nil
-  "Whether aria2c should be stopped when exiting emacs. If nil Emacs will reattach itself to the
-process on entering downloads list."
+  "Whether aria2c should be stopped when exiting Emacs.
+If nil Emacs will reattach itself to the process on entering downloads list."
   :type 'boolean
   :group 'aria2)
 
@@ -59,8 +59,7 @@ process on entering downloads list."
   :group 'aria2)
 
 (defcustom aria2-details-buffer-name "*aria2: details %s*"
-  "Name of buffer to use when showing file details,
-\"%s\" will be replaced by that file name."
+  "Name of buffer to use when showing file details, \"%s\" will be replaced by that file name."
   :type '(string :tag "Buffer name")
   :group 'aria2)
 
@@ -74,7 +73,7 @@ process on entering downloads list."
   :group 'aria2)
 
 (defcustom aria2-session-file (expand-file-name "aria2c.session" user-emacs-directory)
-  "Name of session file. Will be used with \"--save-session\" and \"--input-file\" options."
+  "Name of session file.  Will be used with \"--save-session\" and \"--input-file\" options."
   :type 'file
   :group 'aria2)
 
@@ -89,12 +88,12 @@ process on entering downloads list."
   :group 'aria2)
 
 (defcustom aria2-custom-args nil
-  "Additional arguments for aria2c. This should be a list of strings. See aria2c manual for supported options."
+  "Additional arguments for aria2c.  This should be a list of strings.  See aria2c manual for supported options."
   :type '(repeat (string :tag "Commandline argument."))
   :group 'aria2)
 
 (defvar aria2--debug nil
-  "Should json commands and replies be printed. Also enables url-debug from url package.")
+  "Should json commands and replies be printed.  Also enables variable `url-debug' from url package.")
 
 (defconst aria2--cc-file
   (expand-file-name "aria2-controller.eieio" user-emacs-directory)
@@ -136,7 +135,7 @@ process on entering downloads list."
   (format "http://localhost:%d/jsonrpc" aria2-rcp-listen-port))
 
 (defun aria2--base64-encode-file (path)
-  "Returns base64-encoded string with contents of file on PATH."
+  "Return base64-encoded string with contents of file on PATH."
   (unless (file-exists-p path)
     (signal 'aria2-err-file-doesnt-exist '(path)))
   (with-current-buffer (find-file-noselect path)
@@ -368,8 +367,8 @@ If nil defaults to \"POS_CUR\"."
   (make-request this "aria2.changePosition" gid pos (or how "POS_CUR")))
 
 (defmethod changeUri ((this aria2-controller) gid file-index del-uris add-uris &optional position)
-  "This method removes the URIs in DEL-URIS list from and appends the URIs in ADD-URIS list
-to download denoted by GID. FILE-INDEX is 1-based position, identifying a file in a download.
+  "This method removes the URIs in DEL-URIS list and appends the URIs in ADD-URIS list to download denoted by GID.
+FILE-INDEX is 1-based position, identifying a file in a download.
 POSITION is a 0-based index specifying where URIs are inserted in waiting list.
 Returns a pair of numbers denoting amount of files deleted and files inserted."
   (make-request this "aria2.changeUri" gid file-index del-uris add-uris (or position 0)))
@@ -484,7 +483,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
         " - ")))
 
 (defun aria2--list-entries ()
-  "Returns entries to be displayed in downloads list."
+  "Return entries to be displayed in downloads list."
   (let (entries
         (info (append
                (tellActive aria2--cc aria2--tell-keys)
@@ -574,7 +573,7 @@ With prefix start search in $HOME."
 (defun aria2-remove-download (arg)
   "Set download status to 'removed'."
   (interactive "P")
-  (when (y-or-n-p "Really remove download?")
+  (when (y-or-n-p "Really remove download? ")
     (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg)))
     (revert-buffer)))
 
@@ -599,8 +598,9 @@ With prefix start search in $HOME."
   (revert-buffer))
 
 (defun aria2-terminate ()
+  "Stop aria2c process and kill buffers."
   (interactive)
-  (when (y-or-n-p "Are you sure yo want to terminate aria2 process?")
+  (when (y-or-n-p "Are you sure yo want to terminate aria2 process? ")
     (shutdown aria2--cc)
     (kill-buffer aria2-list-buffer-name)))
 
@@ -632,10 +632,10 @@ With prefix start search in $HOME."
     (define-key map "k" 'previous-line)
     (define-key map "C-p" 'previous-line)
     (define-key map [up] 'previous-line)
-    (define-key map "M-k" 'aria2-move-up-in-list)
-    (define-key map "M-n" 'aria2-move-up-in-list)
-    (define-key map "M-j" 'aria2-down-up-in-list)
-    (define-key map "M-n" 'aria2-down-up-in-list)
+    (define-key map "=" 'aria2-move-up-in-list)
+    (define-key map "+" 'aria2-move-up-in-list)
+    (define-key map "-" 'aria2-down-up-in-list)
+    (define-key map "_" 'aria2-down-up-in-list)
     (define-key map "g" 'revert-buffer)
     (define-key map "q" 'quit-window)
     (define-key map "Q" 'aria2-terminate)
