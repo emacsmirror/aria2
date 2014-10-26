@@ -64,6 +64,10 @@ process on entering downloads list."
   :type '(string :tag "Buffer name")
   :group 'aria2)
 
+(defcustom aria2-refresh-timeout 10
+  "Amount of seconds between refreshing buffer `aria2-list-buffer-name'."
+  :type '(integer :tag "Seconds"))
+
 (defcustom aria2-executable (executable-find "aria2c")
   "Full path to aria2c binary."
   :type 'file
@@ -79,25 +83,10 @@ process on entering downloads list."
   :type 'directory
   :group 'aria2)
 
-(defvar aria2-rcp-listen-port)
-
-(defsubst aria2--url ()
-  "Returns encoded url, wiith proper port value."
-  (url-encode-url (format "http://localhost:%d/jsonrpc" aria2-rcp-listen-port)))
-
 (defcustom aria2-rcp-listen-port 6800
   "Port on which JSON RCP server will listen."
   :type '(integer :tag "Http port")
-  :group 'aria2
-  :set #'(lambda (sym value)
-           (set-default sym value)
-           (when (and (boundp 'aria2--cc)
-                      (not (null aria2--cc)))
-             ;; restart process on a new port
-             (let ((running (is-process-running aria2--cc)))
-               (when running (shutdown aria2--cc t))
-               (oset aria2--cc rcp-url (aria2--url))
-               (when running (run-process aria2--cc))))))
+  :group 'aria2)
 
 (defcustom aria2-custom-args nil
   "Additional arguments for aria2c. This should be a list of strings. See aria2c manual for supported options."
@@ -113,7 +102,10 @@ process on entering downloads list."
 
 ;;; Utils start here.
 
-(defsubst aria2--base64-encode-file (path)
+(defsubst aria2--url ()
+  (format "http://localhost:%d/jsonrpc" aria2-rcp-listen-port))
+
+(defun aria2--base64-encode-file (path)
   "Returns base64-encoded string with contents of file on PATH."
   (unless (file-exists-p path)
     (signal 'aria2-err-file-doesnt-exist '(path)))
@@ -121,6 +113,13 @@ process on entering downloads list."
     (unwind-protect
         (base64-encode-string (buffer-string) t)
       (kill-buffer))))
+
+(defun aria2--is-aria-process-p (pid)
+  "Returns t if `process-attributes' entry belongs to aria."
+  (let ((proc-attr (process-attributes pid)))
+    (and
+     (string= "aria2c" (alist-get 'comm proc-attr))
+     (string= (user-real-login-name) (alist-get 'user proc-attr)))))
 
 ;;; Error definitions start here
 
@@ -132,17 +131,53 @@ process on entering downloads list."
 (define-error 'aria2-err-no-executable         "Couldn't find `aria2c' executable, aborting"  'error)
 (define-error 'aria2-err-no-such-position-type "Wrong position type \"%s\""                   'error)
 
+(defsubst aria2--decode-error (err)
+  (cond ((string= err "0") "All downloads were successful")
+        ((string= err "1") "An unknown error occurred")
+        ((string= err "2") "Time out occurred")
+        ((string= err "3") "A resource was not found")
+        ((string= err "4") "Aria2 saw the specified number of \"resource not found\" error. See --max-file-not-found option")
+        ((string= err "5") "A download aborted because download speed was too slow. See --lowest-speed-limit option")
+        ((string= err "6") "Network problem occurred")
+        ((string= err "7") "There were unfinished downloads. This error is only reported if all finished downloads were successful and there were unfinished downloads in a queue when aria2 exited by pressing Ctrl-C by an user or sending TERM or INT signal")
+        ((string= err "8") "Remote server did not support resume when resume was required to complete download")
+        ((string= err "9") "There was not enough disk space available")
+        ((string= err "10") "Piece length was different from one in .aria2 control file. See --allow-piece-length-change option")
+        ((string= err "11") "Aria2 was downloading same file at that moment")
+        ((string= err "12") "Aria2 was downloading same info hash torrent at that moment")
+        ((string= err "13") "File already existed. See --allow-overwrite option")
+        ((string= err "14") "Renaming file failed. See --auto-file-renaming option")
+        ((string= err "15") "Aria2 could not open existing file")
+        ((string= err "16") "Aria2 could not create new file or truncate existing file")
+        ((string= err "17") "File I/O error occurred")
+        ((string= err "18") "Aria2 could not create directory")
+        ((string= err "19") "Name resolution failed")
+        ((string= err "20") "Aria2 could not parse Metalink document")
+        ((string= err "21") "FTP command failed")
+        ((string= err "22") "HTTP response header was bad or unexpected")
+        ((string= err "23") "Too many redirects occurred")
+        ((string= err "24") "HTTP authorization failed")
+        ((string= err "25") "Aria2 could not parse bencoded file (usually \".torrent\" file)")
+        ((string= err "26") "A \".torrent\" file was corrupted or missing information that aria2 needed")
+        ((string= err "27") "Magnet URI was bad")
+        ((string= err "28") "Bad/unrecognized option was given or unexpected option argument was given")
+        ((string= err "29") "The remote server was unable to handle the request due to a temporary overloading or maintenance")
+        ((string= err "30") "Aria2 could not parse JSON-RPC request")
+        (t "Unknown/other error")))
+
 ;;; Aria2c process controller starts here.
 
 (defclass aria2-controller (eieio-persistent)
-  ((request-id :initform 0
+  ((request-id :initarg :request-id
+               :initform 0
                :type integer
                :docstring "Value of id field in JSONRPC data, gets incremented for each request.")
-   (rcp-url :initarg :url
+   (rcp-url :initarg :rcp-url
             :initform (aria2--url)
             :type string
             :docstring "Url on which aria2c listens for JSON RPC requests.")
-   (secret :initform
+   (secret :initarg :secret
+           :initform
            (or (let ((uuidgen (executable-find "uuidgen")))
                  (and uuidgen
                       (string-trim (shell-command-to-string uuidgen))))
@@ -152,7 +187,8 @@ process on entering downloads list."
                       (emacs-uptime) (buffer-string) (random) (recent-keys))))
            :type string
            :docstring "Secret value used for authentication with the aria2c process, for use with --rpc-secret= switch.")
-   (pid :initform -1
+   (pid :initarg :pid
+        :initform -1
         :type integer
         :docstring "PID of the aria2c process, or -1 if process isn't running."))
   :docstring "This takes care of starting/stopping aria2c process and provides methods for each remote command.")
@@ -167,7 +203,11 @@ process on entering downloads list."
 
 (defmethod is-process-running ((this aria2-controller))
   "Returns status of aria2c process."
-  (when (< 0 (oref this pid)) t))
+  (with-slots (pid) this
+    (when (and
+           (< 0 pid)
+           (aria2--is-aria-process-p pid))
+      t)))
 
 (defmethod run-process ((this aria2-controller))
   "Starts aria2c process, if not already running."
@@ -184,9 +224,13 @@ process on entering downloads list."
                             ,(format "--save-session=%s" aria2-session-file)
                             ,(when (file-exists-p aria2-session-file)
                                (format "--input-file=%s" aria2-session-file)))))))
-      (when aria2--debug (message "Starting process: %s\n\t%s" aria2-executable (string-join options " ")))
-      (oset this pid (process-id
-                      (apply 'start-process "aria2c" nil aria2-executable options)))
+      (when aria2--debug
+        (message "Starting process: %s %s" aria2-executable (string-join options " ")))
+      (apply 'start-process "aria2c" nil aria2-executable options)
+      (sleep-for 1)
+      ;; aria2 in daemon mode forks to the background, so we search system-processes
+      (oset this pid (or (car (remove-if-not #'aria2--is-aria-process-p (list-system-processes)))
+                         -1))
       (unless (is-process-running this)
         (signal 'aria2-err-failed-to-start '(aria2-executable (string-join options " ")))))))
 
@@ -278,14 +322,15 @@ When sending magnet link, URLS must have only one element."
   "Return statuses of stopped downloads."
   (make-request this "aria2.tellStopped" (or offset 0) (or num most-positive-fixnum) keys))
 
-(defmethod changePosition ((this aria2-controller) gid pos how)
+(defmethod changePosition ((this aria2-controller) gid pos &optional how)
   "Change position of a download denoted by GID. POS is a number. HOW is one of:
 \"POS_SET\" - sets file to POS position from the beginning of a list (first element is 0),
 \"POS_CUR\" - moves file by POS places relative to it's current position,
-\"POS_END\" - sets file to POS position relative to end of list."
-  (unless (member how '("POS_SET" "POS_CUR" "POS_END"))
+\"POS_END\" - sets file to POS position relative to end of list.
+If nil defaults to \"POS_CUR\"."
+  (unless (or (null how) (member how '("POS_SET" "POS_CUR" "POS_END")))
     (signal 'aria2-err-no-such-position-type (list how)))
-  (make-request this "aria2.changePosition" gid pos how))
+  (make-request this "aria2.changePosition" gid pos (or how "POS_CUR")))
 
 (defmethod changeUri ((test aria2-controller) gid file-index del-uris add-uris &optional position)
   "This method removes the URIs in DEL-URIS list from and appends the URIs in ADD-URIS list
@@ -353,13 +398,55 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defvar aria2--cc nil "Control center object container.")
 
 (defconst aria2--list-format (vector
-                              '("File" 50 t) '("Status" 7 t) '("Type" 9 t)
-                              '("Done" 4 t) '("Download" 9 t) '("Upload" 9 t))
+                              '("File" 40 t) '("Status" 7 t) '("Type" 9 t)
+                              '("Done" 4 t) '("Download" 9 t) '("Upload" 9 t)
+                              '("Error" 5 nil))
   "Format for downloads list columns.")
 
 (defconst aria2--tell-keys
-  (vector "gid" "status" "totalLength" "completedLength" "downloadSpeed" "uploadSpeed" "files" "dir" "bittorrent")
+  (vector "gid" "status" "totalLength" "completedLength" "downloadSpeed" "uploadSpeed" "files" "dir" "bittorrent" "errorCode")
   "Default list of keys for use in aria2.tell* calls.")
+
+(defvar aria2--refresh-timer nil
+  "Holds a timer object that refreshes downloads list periodically.")
+
+(defsubst aria2--list-entries-File (e)
+  (let ((bt (alist-get 'bittorrent e))
+        (file (elt (alist-get 'files e) 0)))
+    (or (and bt (alist-get 'name (alist-get 'info bt)))
+        (let ((uris (alist-get 'uris file)))
+          (and (< 0 (length uris)) (elt uris 0)))
+        (file-name-nondirectory (alist-get 'path file)))))
+
+(defsubst aria2--list-entries-Status (e)
+  (alist-get 'status e))
+
+(defsubst aria2--list-entries-Type (e)
+  (or (and (alist-get 'bittorrent e) "bittorrent")
+      (let* ((file (elt (alist-get 'files e) 0))
+             (uris (alist-get 'uris file))
+             (uri1 (and (< 0 (length uris)) (elt uris 0))))
+        (and uri1 (file-name-extension uri1))
+        (file-name-extension (alist-get 'path file)))
+      "other"))
+
+(defsubst aria2--list-entries-Done (e)
+  (let ((total (string-to-int (alist-get 'totalLength e)))
+        (completed (string-to-int (alist-get 'completedLength e))))
+    (if (>= 0 total)
+        "-"
+      (format "%d%%" (* 100 (/ completed total))))))
+
+(defsubst aria2--list-entries-Download (e)
+  (format "%.2f kB" (/ (string-to-int (alist-get 'downloadSpeed e)) 1024)))
+
+(defsubst aria2--list-entries-Upload (e)
+  (format "%.2f kB" (/ (string-to-int (alist-get 'uploadSpeed e)) 1024)))
+
+(defsubst aria2--list-entries-Err (e)
+  (let ((err (alist-get 'errorCode e)))
+    (or (and err (aria2--decode-error err))
+        " - ")))
 
 (defun aria2--list-entries ()
   "Returns entries to be displayed in downloads list."
@@ -373,22 +460,18 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (push (list
              (alist-get 'gid e)
              (vector
-              (or (let ((bt (alist-get 'bittorrent e))) ;File
-                    (and bt (alist-get 'name (alist-get 'info bt))))
-                  (file-name-nondirectory (alist-get 'path (elt (alist-get 'files e) 0))))
-              (alist-get 'status e) ;Status
-              (or (and (alist-get 'bittorrent e) "bittorrent") "other") ;Type
-              (let ((total (string-to-int (alist-get 'totalLength e))))
-                (format
-                 "%d%%"
-                 (if (>= 0 total) 0
-                   (* 100 (/ (string-to-int (alist-get 'completedLength e)) total))))) ;Done
-              (format "%.2f kB" (/ (string-to-int (alist-get 'downloadSpeed e)) 1024)) ;Download
-              (format "%.2f kB" (/ (string-to-int (alist-get 'uploadSpeed e)) 1024)))) ;Upload
+              (aria2--list-entries-File e)
+              (aria2--list-entries-Status e)
+              (aria2--list-entries-Type e)
+              (aria2--list-entries-Done e)
+              (aria2--list-entries-Download e)
+              (aria2--list-entries-Upload e)
+              (aria2--list-entries-Err e)))
             entries))))
 
 (defun aria2--persist-settings ()
   "Persist controller settings, or clear state when aria2c isn't running."
+  (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
   (if (and aria2--cc (is-process-running aria2--cc))
       (eieio-persistent-save aria2--cc)
     (when (file-exists-p aria2--cc-file)
@@ -396,14 +479,17 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 
 (defun aria2--kill-on-exit ()
   "Stops aria2c process."
+  (when aria2--refresh-timer
+    (cancel-timer aria2--refresh-timer))
   (when aria2--cc
     (shutdown aria2--cc t)))
 
-;;(pause aria2--cc "c2ebac39ff92fd75")
-;;(addTorrent aria2--cc (ido-read-file-name "Find .torrent " default-directory nil t nil (lambda (f) (or (file-directory-p f) (string-match-p "\\.torrent$" f)))))
-;;(aria2--list-entries)
-;;(addTorrent aria2--cc (ido-read-file-name "a "))
-;;(vconcat (tellActive aria2--cc ["gid"]))
+(defun aria2--refresh-and-repeat ()
+  "Refreshes download list buffer, and queues next refresh after `aria2-refresh-timeout'."
+  (with-current-buffer (get-buffer aria2-list-buffer-name)
+    (revert-buffer)
+    (setq aria2--refresh-timer
+          (run-with-timer aria2-refresh-timeout nil #'aria2--refresh-and-repeat))))
 
 (defvar aria2-mode-map
   (let ((map (make-sparse-keymap)))
@@ -425,7 +511,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
     (signal 'aria2-err-no-executable nil))
   ;; try to load controller state from file
   (unless aria2--cc
-    (condition-case nil
+    (condition-case n
         (setq aria2--cc (eieio-persistent-read aria2--cc-file aria2-controller))
       (error (setq aria2--cc (make-instance aria2-controller
                                             "aria2-controller"
@@ -438,11 +524,17 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (setq tabulated-list-format aria2--list-format)
   (tabulated-list-init-header)
   (setq tabulated-list-entries #'aria2--list-entries)
-  (tabulated-list-print))
+  (tabulated-list-print)
+  ;; refresh list periodically
+  (setq aria2--refresh-timer
+        (run-with-timer aria2-refresh-timeout nil #'aria2--refresh-and-repeat)))
+
+(with-eval-after-load 'evil-states
+  (push 'aria2-mode evil-emacs-state-modes))
 
 ;;;###autoload
 (defun aria2-downloads-list ()
-  "Display current aria2 downloads.  Enable `aria2-mode' to controll the process."
+  "Display aria2 downloads list.  Enable `aria2-mode' to controll the process."
   (interactive)
   (with-current-buffer (pop-to-buffer aria2-list-buffer-name)
     (aria2-mode)))
