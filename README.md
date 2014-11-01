@@ -1,4 +1,4 @@
-![lisp-alien-logo.png](https://bitbucket.org/repo/enngMR/images/2968543482-lisp-alien-logo.png)# README #                                                                                                                      
+# README #                                                                                                                      
 ### What is this repository for? ###
 *his toll adds graphical suport for downloading files in)Emacs
 *this currrently supports: bittorrenr, magnet,meta4,ftp.http, https, (basicalli wht aria supports),
