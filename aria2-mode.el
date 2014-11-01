@@ -1,4 +1,4 @@
-;;; aria2-mode.el --- Controll aria2c commandline tool from Emacs
+;;; aria2-mode.el --- Control aria2c commandline tool from Emacs
 
 ;; Copyright (c) 2014 Łukasz Gruner
 
@@ -27,6 +27,9 @@
 
 
 ;;; Commentary:
+
+;;; TODOS:
+;; * add modeline variable showing shortcuts, and some basic info
 
 ;;; Code:
 
@@ -63,10 +66,6 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :type '(string :tag "Buffer name")
   :group 'aria2)
 
-(defcustom aria2-refresh-timeout 10
-  "Amount of seconds between refreshing buffer `aria2-list-buffer-name'."
-  :type '(integer :tag "Seconds"))
-
 (defcustom aria2-executable (executable-find "aria2c")
   "Full path to aria2c binary."
   :type 'file
@@ -92,7 +91,7 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :type '(repeat (string :tag "Commandline argument."))
   :group 'aria2)
 
-(defvar aria2--debug t
+(defvar aria2--debug t;XXX
   "Should json commands and replies be printed.")
 
 (defconst aria2--cc-file
@@ -103,31 +102,38 @@ If nil Emacs will reattach itself to the process on entering downloads list."
 
 (defface aria2-file-face `((t :inherit mode-line-buffer-id))
   "Face for download name."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-status-face `((t :inherit font-lock-constant-face))
   "Face for status."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-type-face `((t :inherit font-lock-builtin-face))
   "Face for download type."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-done-face `((t :inherit font-lock-doc-face))
   "Face for % done."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-download-face `((t :inherit font-lock-string-face))
   "Face for download speed."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-upload-face `((t :inherit font-lock-comment-face))
   "Face for upload speed."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 (defface aria2-error-face `((t :inherit font-lock-warning-face))
   "Face for error messages."
-  :group 'aria2)
+  :group 'aria2
+  :group 'face)
 
 ;;; Utils start here.
 
@@ -144,7 +150,7 @@ If nil Emacs will reattach itself to the process on entering downloads list."
       (kill-buffer))))
 
 (defun aria2--is-aria-process-p (pid)
-  "Returns t if `process-attributes' entry belongs to aria."
+  "Returns t if `process-attributes' of PID belongs to aria."
   (let ((proc-attr (process-attributes pid)))
     (and
      (string= "aria2c" (alist-get 'comm proc-attr))
@@ -153,12 +159,12 @@ If nil Emacs will reattach itself to the process on entering downloads list."
 ;;; Error definitions start here
 
 (define-error 'aria2-err-too-many-magnet-urls  "Only one magnet link per download is allowed" 'user-error)
-(define-error 'aria2-err-file-doesnt-exist     "File %s doesn't exist"                        'user-error)
+(define-error 'aria2-err-file-doesnt-exist     "File doesn't exist"                           'user-error)
 (define-error 'aria2-err-not-a-torrent-file    "This is not a .torrent file"                  'user-error)
 (define-error 'aria2-err-not-a-metalink-file   "This is not a .metalink file"                 'user-error)
-(define-error 'aria2-err-failed-to-start       "Failed to start "                             'error)
+(define-error 'aria2-err-failed-to-start       "Failed to start"                              'error)
 (define-error 'aria2-err-no-executable         "Couldn't find `aria2c' executable, aborting"  'error)
-(define-error 'aria2-err-no-such-position-type "Wrong position type "                         'error)
+(define-error 'aria2-err-no-such-position-type "Wrong position type"                          'error)
 
 (defconst aria2--codes-to-errors-alist
   (list
@@ -441,6 +447,9 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (vector "gid" "status" "totalLength" "completedLength" "downloadSpeed" "uploadSpeed" "files" "dir" "bittorrent" "errorCode")
   "Default list of keys for use in aria2.tell* calls.")
 
+(defvar aria2--master-timer nil
+  "Holds a timer object that dynamically manages frequency of `aria2--refresh-timer', depending on visibility and focused state.")
+
 (defvar aria2--refresh-timer nil
   "Holds a timer object that refreshes downloads list periodically.")
 
@@ -503,9 +512,61 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
               (list (aria2--list-entries-Err e)      'face 'aria2-error-face)))
             entries))))
 
-(defun aria2--persist-settings ()
+(defcustom aria2-refresh-fast 3
+  "Timeout after list is refreshed, when it has focus."
+  :group 'aria2
+  :group 'timer
+  :type  '(integer :tag "Number of seconds"))
+
+(defcustom aria2-refresh-normal 8
+  "Timeout after list is refreshed, when it doesn't have focus, but its buffer is visible."
+  :group 'aria2
+  :group 'timer
+  :type  '(integer :tag "Number of seconds"))
+
+(defcustom aria2-refresh-slow 20
+  "Timeout after list is refreshed, when it doesn't have focus and it's buffer is not visible."
+  :group 'aria2
+  :group 'timer
+  :type  '(integer :tag "Number of seconds"))
+
+(defvar aria2--current-buffer-refresh-speed nil
+  "One of :fast :normal :slow or nil if not refreshing. Used to manage refresh timers.")
+
+(defun aria2--manage-refresh-timer ()
+  "Restarts `aria2--refresh-timer' on different intervals, depending on focus an buffer visibility."
+  (let ((buf (get-buffer aria2-list-buffer-name)))
+    (cond ((and
+            (eq buf (window-buffer (selected-window))) ; when list has focus
+            (not (eq aria2--current-buffer-refresh-speed :fast)))
+           (progn
+             (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
+             (setq aria2--refresh-timer (run-at-time t aria2-refresh-fast #'aria2--refresh))
+             (setq aria2--current-buffer-refresh-speed :fast)))
+          ((and
+            (get-buffer-window buf) ; list visible but without focus
+            (not (eq aria2--current-buffer-refresh-speed :normal)))
+           (progn
+             (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
+             (setq aria2--refresh-timer (run-at-time t aria2-refresh-normal #'aria2--refresh))
+             (setq aria2--current-buffer-refresh-speed :normal)))
+          ((not (eq aria2--current-buffer-refresh-speed :slow)) ; list is in the background
+           (progn
+             (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
+             (setq aria2--refresh-timer (run-at-time t aria2-refresh-slow #'aria2--refresh))
+             (setq aria2--current-buffer-refresh-speed :slow))))))
+
+(defun aria2--stop-timer ()
+  "Stop timer if any."
+  (when aria2--refresh-timer
+    (cancel-timer aria2--master-timer)
+    (cancel-timer aria2--refresh-timer)
+    (setq aria2--refresh-timer nil
+          aria2--master-timer nil)))
+
+(defun aria2--persist-settings-on-exit ()
   "Persist controller settings, or clear state when aria2c isn't running."
-  (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
+  (aria2--stop-timer)
   (if (and aria2--cc (is-process-running aria2--cc))
       (eieio-persistent-save aria2--cc aria2--cc-file)
     (when (file-exists-p aria2--cc-file)
@@ -513,31 +574,32 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 
 (defun aria2--kill-on-exit ()
   "Stops aria2c process."
-  (when aria2--refresh-timer
-    (cancel-timer aria2--refresh-timer))
+  (aria2--stop-timer)
   (when aria2--cc
     (shutdown aria2--cc t)))
 
 (defun aria2--refresh ()
-  "Refreshes download list buffer."
+  "Refreshes download list buffer. Or stops refresh timers if buffer doesn't exist."
   (let ((buf (get-buffer aria2-list-buffer-name)))
     (if buf
-        (with-current-buffer buf
-          (revert-buffer))
-      (cancel-timer aria2--refresh-timer)
-      (setq aria2--refresh-timer nil))))
+        (with-current-buffer buf (revert-buffer))
+      (aria2--stop-timer))))
 
 (defsubst aria2--get-gid ()
   (get-text-property  (point) 'tabulated-list-id))
 
-(defsubst aria2--is-paused-p ()
+(defun aria2--is-paused-p ()
+  (interactive);;xxxx remove after testing
   (equal (elt (get-text-property (point) 'tabulated-list-entry) 2) "paused"))
 
 (defun aria2-pause ()
   "Pause download."
   (interactive)
   (pause aria2--cc (aria2--get-gid))
-  (run-with-timer 2 nil #'revert-buffer))
+  ;; pausing requires aria to contact bt trackers,
+  ;; so info about it won't be visible asap, thus we queue up addidtional refreshes
+  (run-with-timer 2 nil #'revert-buffer)
+  (run-with-timer 4 nil #'revert-buffer))
 
 (defun aria2-resume ()
   "Resume paused download."
@@ -552,6 +614,9 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (aria2-resume)
     (aria2-pause)))
 
+(defconst aria2-supported-file-extension-regexp "\\.\\(?:meta\\(?:4\\|link\\)\\|torrent\\)$"
+  "Regexp matching .torrent .meta4 and .metalink files.")
+
 (defun aria2-add-file (arg)
   "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files.
 With prefix start search in $HOME."
@@ -563,7 +628,7 @@ With prefix start search in $HOME."
            (if (equal arg nil) default-directory "~/") nil nil nil
            #'(lambda (f)
                (or (file-directory-p f)
-                   (string-match-p "\\.\\(?:meta\\(?:4\\|link\\)\\|torrent\\)$" f)))))))
+                   (string-match-p aria2-supported-file-extension-regexp f)))))))
     (if (or (string-blank-p chosen-file)
             (not (file-exists-p chosen-file)))
         (message "No file selected.")
@@ -598,7 +663,7 @@ With prefix remove all applicable downloads."
   (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) -1 0) (if (equal nil arg) "POS_CUR" "POS_SET"))
   (revert-buffer))
 
-(defun aria2-down-up-in-list (arg)
+(defun aria2-move-down-in-list (arg)
   "Move item one row down, with prefix move to end of list."
   (interactive "P")
   (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) 1 0) (if (equal nil arg) "POS_CUR" "POS_END"))
@@ -609,7 +674,8 @@ With prefix remove all applicable downloads."
   (interactive)
   (when (y-or-n-p "Are you sure yo want to terminate aria2 process? ")
     (shutdown aria2--cc)
-    (kill-buffer aria2-list-buffer-name)))
+    (kill-buffer aria2-list-buffer-name)
+    (aria2--stop-timer)))
 
 (easy-menu-define aria2-menu nil "Aria2 Menu"
   `("Aria2"
@@ -632,16 +698,23 @@ With prefix remove all applicable downloads."
   (let ((map (make-sparse-keymap)))
     (define-key map "j" 'next-line)
     (define-key map "C-n" 'next-line)
+    (define-key map "n" 'next-line)
     (define-key map [down] 'next-line)
+    (put 'next-line :advertised-binding "n")
     (define-key map "k" 'previous-line)
     (define-key map "C-p" 'previous-line)
+    (define-key map "p" 'previous-line)
     (define-key map [up] 'previous-line)
+    (put 'previous-line :advertised-binding "p")
     (define-key map "=" 'aria2-move-up-in-list)
     (define-key map "+" 'aria2-move-up-in-list)
-    (define-key map "-" 'aria2-down-up-in-list)
-    (define-key map "_" 'aria2-down-up-in-list)
+    (put 'aria2-move-up-in-list :advertised-binding "=")
+    (define-key map "-" 'aria2-move-down-in-list)
+    (define-key map "_" 'aria2-move-down-in-list)
+    (put 'aria2-move-down-in-list :advertised-binding "-")
     (define-key map "g" 'revert-buffer)
     (define-key map "G" 'revert-buffer)
+    (put 'revert-buffer :advertised-binding "g")
     (define-key map "q" 'quit-window)
     (define-key map "Q" 'aria2-terminate)
     (define-key map "P" 'aria2-toggle-pause)
@@ -673,17 +746,17 @@ With prefix remove all applicable downloads."
                                             :file aria2--cc-file)))))
   ;; kill process or save state on exit
   (if aria2-kill-process-on-emacs-exit
-      (add-to-list 'kill-emacs-hook 'aria2--kill-on-exit)
-    (add-to-list 'kill-emacs-hook 'aria2--persist-settings))
+      (add-hook 'kill-emacs-hook 'aria2--kill-on-exit)
+    (add-hook 'kill-emacs-hook 'aria2--persist-settings-on-exit))
   ;; list settings
   (setq tabulated-list-format aria2--list-format)
   (tabulated-list-init-header)
   (setq tabulated-list-entries #'aria2--list-entries)
   (tabulated-list-print)
   ;; refresh list periodically
-  (when (not aria2--refresh-timer)
-    (setq aria2--refresh-timer
-          (run-at-time t aria2-refresh-timeout #'aria2--refresh)))
+  (when (not aria2--master-timer)
+    (setq aria2--master-timer
+          (run-at-time t 5 #'aria2--manage-refresh-timer)))
   (hl-line-mode 1))
 
 (with-eval-after-load 'evil-states
