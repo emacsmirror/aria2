@@ -1,6 +1,6 @@
 # README                                                                                                                    
-### This is aria2-mode, a major mode for controlling [aria2c](http://aria2.sourceforge.net/) downloader ###
-Currrently supported download types are: bittorrent, magnet, meta4, ftp, http, https files (basically what aria2 supports).
+### This is aria2, a major mode for controlling [aria2c](http://aria2.sourceforge.net/) downloader ###
+Currrently supported download types are: bittorrent, magnet, meta4, ftp, http, https files (basically what aria2c supports).
 There is no support for changing global or per-download options, but this is planned.
 
 This mode tries to work well with evil-mode, just set *aria2-add-evil-quirks* to *t*.
@@ -16,12 +16,12 @@ This mode tries to work well with evil-mode, just set *aria2-add-evil-quirks* to
 #!emacs-lisp
 
   (push
-   `(:name aria2-mode
+   `(:name aria2
            :type git
-           :url "https://bitbucket.org/ukaszg/aria2-mode.git")
+           :url "https://bitbucket.org/ukaszg/aria2.git")
    el-get-sources)
 
-  (el-get 'sync '(aria2-mode))
+  (el-get 'sync '(aria2))
 ```
 
 #### Packages ####
