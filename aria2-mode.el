@@ -483,11 +483,11 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       "unknown"))
 
 (defsubst aria2--list-entries-Done (e)
-  (let ((total (string-to-number (alist-get 'totalLength e)))
-        (completed (string-to-number (alist-get 'completedLength e))))
+  (let ((total (float (string-to-number (alist-get 'totalLength e))))
+        (completed (float (string-to-number (alist-get 'completedLength e)))))
     (if (>= 0 total)
         "-"
-      (format "%d%%" (* 100 (/ completed total))))))
+      (format "%d%%" (* 100.0 (/ completed total))))))
 
 (defsubst aria2--list-entries-Download (e)
   (format "%.2f kB" (/ (string-to-number (alist-get 'downloadSpeed e)) 1024)))
