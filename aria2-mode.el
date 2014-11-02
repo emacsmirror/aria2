@@ -134,6 +134,24 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :group 'aria2
   :group 'face)
 
+(defface aria2-modeline-key-face `((t :inherit font-lock-warning-face))
+  "Face for shortcut hints displayed in mode-line."
+  :group 'aria2
+  :group 'face)
+
+(defvar aria2-mode-line-format
+  (list
+   (propertize "%b" 'face 'mode-line-buffer-id)
+   " "
+   "[" (propertize "f" 'face 'aria2-modeline-key-face) "]:add file "
+   "[" (propertize "u" 'face 'aria2-modeline-key-face) "]:add url "
+   "[" (propertize "D" 'face 'aria2-modeline-key-face) "]:remove download "
+   "[" (propertize "C" 'face 'aria2-modeline-key-face) "]:clear finished "
+   "[" (propertize "q" 'face 'aria2-modeline-key-face) "]:quit window "
+   "[" (propertize "Q" 'face 'aria2-modeline-key-face) "]:kill aria2 "
+   )
+  "Custom mode-line for use with `aria2-mode'.")
+
 ;;; Utils start here.
 
 (defsubst aria2--url ()
@@ -451,7 +469,8 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defsubst aria2--list-entries-File (e)
   (let ((bt (alist-get 'bittorrent e)))
     (or (and bt (alist-get 'name (alist-get 'info bt)))
-        (file-name-nondirectory (alist-get 'uri (elt (cdr (car (elt (alist-get 'files e) 0))) 0)))
+        (let ((uris (cdr (car (elt (alist-get 'files e) 0)))))
+          (and (< 0 (length uris)) (file-name-nondirectory (alist-get 'uri (elt uris 0)))))
         "unknown")))
 
 (defsubst aria2--list-entries-Status (e)
@@ -459,7 +478,8 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 
 (defsubst aria2--list-entries-Type (e)
   (or (and (alist-get 'bittorrent e) "bittorrent")
-      (car-safe (split-string (alist-get 'uri (elt (cdr (car (elt (alist-get 'files e) 0))) 0)) ":"))
+      (let ((uris (cdr (car (elt (alist-get 'files (elt (tellStopped aria2--cc 0 3) 0)) 0)))))
+        (and (< 0 (length uris)) (car-safe (split-string (alist-get 'uri (elt uris 0)) ":"))))
       "unknown"))
 
 (defsubst aria2--list-entries-Done (e)
@@ -800,7 +820,8 @@ With prefix remove all applicable downloads."
     (setq aria2--master-timer
           (run-at-time t 5 #'aria2--manage-refresh-timer)))
   (hl-line-mode 1)
-  (aria2-maybe-add-vim-quirks))
+  (aria2-maybe-add-vim-quirks)
+  (setq-local mode-line-format aria2-mode-line-format))
 
 ;;;###autoload
 (defun aria2-downloads-list ()
@@ -810,7 +831,7 @@ With prefix remove all applicable downloads."
     (aria2-mode))
   (message
    (substitute-command-keys
-    "Type \\<aria2-mode-map>\\[quit-window] to quit, \\[describe-mode] for help")))
+    "Type \\<aria2-mode-map>\\[quit-window] to quit \\[aria2-terminate] to kill aria, \\[describe-mode] for help")))
 
 (provide 'aria2-mode)
 
