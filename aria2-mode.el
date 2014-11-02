@@ -626,9 +626,6 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defsubst aria2--is-paused-p ()
   (string= "paused" (car (elt (tabulated-list-get-entry) 1))))
 
-(defsubst aria2--is-running-p ()
-  (not (aria2--is-paused-p)))
-
 (defun aria2-pause ()
   "Pause download."
   (interactive)
@@ -761,20 +758,6 @@ With prefix remove all applicable downloads."
     (kill-buffer aria2-list-buffer-name)
     (aria2--stop-timer)))
 
-(easy-menu-define aria2-menu nil "Aria2 Menu"
-  `("Aria2"
-    ["Pause download" aria2-pause :help "Pause current download" :visble (aria2--is-running-p)]
-    ["Resume download" aria2-unpause :help "Resume current download" :visible (aria2--is-paused-p)]
-    ["Remove download" aria2-remove-download :help "Stop download and remove it."]
-    ["Clean finished" (lambda () (aria2-clean-removed-download t)) :help "Clean all `removed/completed/errored' downloads from list"]
-    "--"
-    ["Refresh list" revert-buffer :help "Reload download list items"]))
-
-(defun aria2-show-context-menu ()
-  "Show context menu for current item."
-  (interactive)
-  (popup-menu aria2-menu))
-
 (defvar aria2-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "j" 'next-line)
@@ -800,7 +783,6 @@ With prefix remove all applicable downloads."
     (define-key map "u" 'aria2-add-uris)
     (define-key map "D" 'aria2-remove-download)
     (define-key map "C" 'aria2-clean-removed-download)
-    (define-key map [mouse-3] 'aria2-show-context-menu)
     map)
   "Keymap for `aria2-mode'.")
 
