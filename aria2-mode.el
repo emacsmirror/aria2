@@ -453,7 +453,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defconst aria2--list-format (vector
                               '("File" 40 t) '("Status" 7 t) '("Type" 13 t)
                               '("Done" 4 t) '("Download" 12 t) '("Upload" 12 t)
-                              '("Error" 0 nil))
+                              '("Size" 10 nil) '("Error" 0 nil))
   "Format for downloads list columns.")
 
 (defconst aria2--tell-keys
@@ -495,6 +495,21 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defsubst aria2--list-entries-Upload (e)
   (format "%.2f kB" (/ (string-to-number (alist-get 'uploadSpeed e)) 1024)))
 
+(defsubst aria2--list-entries-Size (e)
+  (let ((size (string-to-number (alist-get 'totalLength e))))
+    (if (< size 1024)
+        (format "%.2f B" size)
+      (setq size (/ size 1024))
+      (if (< size 1024)
+          (format "%.2f kB" size)
+        (setq size (/ size 1024))
+        (if (< size 1024)
+            (format "%.2f MB" size)
+          (setq size (/ size 1024))
+          (if (< size 1024)
+              (format "%.2f GB" size)
+            (format "%2.f TB" (/ size 1024))))))))
+
 (defsubst aria2--list-entries-Err (e)
   (let ((err (alist-get 'errorCode e)))
     (or (and err (aria2--decode-error err))
@@ -518,6 +533,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
               (list (aria2--list-entries-Done e)     'face 'aria2-done-face)
               (list (aria2--list-entries-Download e) 'face 'aria2-download-face)
               (list (aria2--list-entries-Upload e)   'face 'aria2-upload-face)
+              (aria2--list-entries-Size e)
               (list (aria2--list-entries-Err e)      'face 'aria2-error-face)))
             entries))))
 
@@ -831,7 +847,7 @@ With prefix remove all applicable downloads."
     (aria2-mode))
   (message
    (substitute-command-keys
-    "Type \\<aria2-mode-map>\\[quit-window] to quit \\[aria2-terminate] to kill aria, \\[describe-mode] for help")))
+    "Type \\<aria2-mode-map>\\[quit-window] to quit, \\[aria2-terminate] to kill aria, \\[describe-mode] for help")))
 
 (provide 'aria2-mode)
 
