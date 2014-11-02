@@ -617,7 +617,8 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   "Keep aria2-mode in EMACS state, as we already define j/k movement and add C-w * commands."
   (when aria2-add-evil-quirks
     (with-eval-after-load 'evil-states
-      (add-to-list 'evil-emacs-state-modes 'aria2-mode))
+      (add-to-list 'evil-emacs-state-modes 'aria2-mode)
+      (add-to-list 'evil-emacs-state-modes 'aria2-dialog-mode))
     (with-eval-after-load 'evil-maps
       (define-key aria2-mode-map "\C-w" 'evil-window-map))))
 
@@ -684,11 +685,15 @@ With prefix start search in $HOME."
 (defconst aria2-url-list-buffer-name  "*aria2: Add http/https/ftp/magnet url(s)*"
   "Name of a buffer for inputting url's to download.")
 
+(define-derived-mode aria2-dialog-mode fundamental-mode "Add urls"
+  "Major moe for adding download urls.")
+
 (defun aria2-add-uris ()
   "Display a form for inputting a list of http/https/ftp/magnet URLs."
   (interactive)
   (switch-to-buffer (get-buffer-create aria2-url-list-buffer-name))
   (kill-all-local-variables)
+  (aria2-dialog-mode)
   (let ((inhibit-read-only t)) (erase-buffer))
   (remove-overlays)
   (widget-insert "Please input urls to download.\n\n")
@@ -719,7 +724,9 @@ With prefix start search in $HOME."
                  "Download")
   (widget-insert "\n")
   (use-local-map aria2-dialog-map)
-  (widget-setup))
+  (widget-setup)
+  (goto-char (point-min))
+  (widget-forward 3))
 
 (defun aria2-remove-download (arg)
   "Set download status to 'removed'."
