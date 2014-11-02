@@ -706,7 +706,6 @@ With prefix start search in $HOME."
                          :valid-regexp aria2-supported-url-protocols-regexp
                          :error "Url does not match supported type."
                          :value "")))
-  (use-local-map widget-keymap)
   (widget-insert "\n\n")
   (widget-create 'push-button
                  :notify (lambda (&rest ignore)
