@@ -613,7 +613,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (when aria2--cc
     (shutdown aria2--cc t)))
 
-(defun aria2-maybe-add-vim-quirks ()
+(defun aria2-maybe-add-evil-quirks ()
   "Keep aria2-mode in EMACS state, as we already define j/k movement and add C-w * commands."
   (when aria2-add-evil-quirks
     (with-eval-after-load 'evil-states
@@ -818,7 +818,7 @@ With prefix remove all applicable downloads."
     (setq aria2--master-timer
           (run-at-time t 5 #'aria2--manage-refresh-timer)))
   (hl-line-mode 1)
-  (aria2-maybe-add-vim-quirks)
+  (aria2-maybe-add-evil-quirks)
   (setq-local mode-line-format aria2-mode-line-format))
 
 ;;;###autoload
