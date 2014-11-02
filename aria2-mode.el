@@ -692,6 +692,7 @@ With prefix start search in $HOME."
   (let ((inhibit-read-only t)) (erase-buffer))
   (remove-overlays)
   (widget-insert "Please input urls to download.\n\n")
+  (widget-insert "Non \"magnet:\" urls must be mirrors pointing to the same file.\n\n")
   (setq aria2--url-list-widget
         (widget-create 'editable-list
                        :entry-format "%i %d %v"
