@@ -30,6 +30,7 @@
 
 ;;; TODOS:
 ;; * add modeline variable showing shortcuts, and some basic info
+;; * fix menu
 
 ;;; Code:
 
@@ -61,11 +62,6 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :type '(string :tag "Buffer name")
   :group 'aria2)
 
-(defcustom aria2-details-buffer-name "*aria2: details %s*"
-  "Name of buffer to use when showing file details, \"%s\" will be replaced by that file name."
-  :type '(string :tag "Buffer name")
-  :group 'aria2)
-
 (defcustom aria2-executable (executable-find "aria2c")
   "Full path to aria2c binary."
   :type 'file
@@ -91,7 +87,10 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :type '(repeat (string :tag "Commandline argument."))
   :group 'aria2)
 
-(defvar aria2--debug t;XXX
+(defcustom aria2-add-evil-quirks nil
+  "If t adds aria2-mode to emacs states, and binds \C-w.")
+
+(defvar aria2--debug nil
   "Should json commands and replies be printed.")
 
 (defconst aria2--cc-file
@@ -301,13 +300,9 @@ If nil Emacs will reattach itself to the process on entering downloads list."
 
 ;;; Api implementation starts here
 
-(defmethod addUri ((this aria2-controller) &rest urls)
+(defmethod addUri ((this aria2-controller) urls)
   "Add a list of http/ftp/bittorrent URLS, pointing at the same file.
 When sending magnet link, URLS must have only one element."
-  (let ((magnet-count (length
-                       (cl-remove-if-not (lambda (u) (string-match-p "^magnet://" u)) urls))))
-    (when (or (< 1 magnet-count) (and (< 0 magnet-count) (< 1 (length urls))))
-      (signal 'aria2-err-too-many-magnet-urls nil)))
   (make-request this "aria2.addUri" (vconcat urls)))
 
 (defmethod addTorrent ((this aria2-controller) path)
@@ -454,24 +449,18 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   "Holds a timer object that refreshes downloads list periodically.")
 
 (defsubst aria2--list-entries-File (e)
-  (let ((bt (alist-get 'bittorrent e))
-        (file (elt (alist-get 'files e) 0)))
+  (let ((bt (alist-get 'bittorrent e)))
     (or (and bt (alist-get 'name (alist-get 'info bt)))
-        (let ((uris (alist-get 'uris file)))
-          (and (< 0 (length uris)) (elt uris 0)))
-        (file-name-nondirectory (alist-get 'path file)))))
+        (file-name-nondirectory (alist-get 'uri (elt (cdr (car (elt (alist-get 'files e) 0))) 0)))
+        "unknown")))
 
 (defsubst aria2--list-entries-Status (e)
   (alist-get 'status e))
 
 (defsubst aria2--list-entries-Type (e)
   (or (and (alist-get 'bittorrent e) "bittorrent")
-      (let* ((file (elt (alist-get 'files e) 0))
-             (uris (alist-get 'uris file))
-             (uri1 (and (< 0 (length uris)) (elt uris 0))))
-        (and uri1 (car-safe (string-split uri1 ":")))
-        (file-name-extension (alist-get 'path file)))
-      "other"))
+      (car-safe (split-string (alist-get 'uri (elt (cdr (car (elt (alist-get 'files e) 0))) 0)) ":"))
+      "unknown"))
 
 (defsubst aria2--list-entries-Done (e)
   (let ((total (string-to-number (alist-get 'totalLength e)))
@@ -512,6 +501,8 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
               (list (aria2--list-entries-Err e)      'face 'aria2-error-face)))
             entries))))
 
+;;; Refresh settings start here
+
 (defcustom aria2-refresh-fast 3
   "Timeout after list is refreshed, when it has focus."
   :group 'aria2
@@ -534,7 +525,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   "One of :fast :normal :slow or nil if not refreshing. Used to manage refresh timers.")
 
 (defun aria2--manage-refresh-timer ()
-  "Restarts `aria2--refresh-timer' on different intervals, depending on focus an buffer visibility."
+  "Restarts `aria2--refresh-timer' on different intervals, depending on focus and buffer visibility."
   (let ((buf (get-buffer aria2-list-buffer-name)))
     (cond ((and
             (eq buf (window-buffer (selected-window))) ; when list has focus
@@ -564,6 +555,14 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
     (setq aria2--refresh-timer nil
           aria2--master-timer nil)))
 
+(defun aria2--refresh ()
+  "Refreshes download list buffer. Or stops refresh timers if buffer doesn't exist."
+  (let ((buf (get-buffer aria2-list-buffer-name)))
+    (if buf
+        (with-current-buffer buf (revert-buffer))
+      (aria2--stop-timer))))
+
+;; On exit hooks start here
 (defun aria2--persist-settings-on-exit ()
   "Persist controller settings, or clear state when aria2c isn't running."
   (aria2--stop-timer)
@@ -578,33 +577,32 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
   (when aria2--cc
     (shutdown aria2--cc t)))
 
-(defun aria2--refresh ()
-  "Refreshes download list buffer. Or stops refresh timers if buffer doesn't exist."
-  (let ((buf (get-buffer aria2-list-buffer-name)))
-    (if buf
-        (with-current-buffer buf (revert-buffer))
-      (aria2--stop-timer))))
+(defun aria2-maybe-add-vim-quirks ()
+  "Keep aria2-mode in EMACS state, as we already define j/k movement and add C-w * commands."
+  (when aria2-add-evil-quirks
+    (with-eval-after-load 'evil-states
+      (add-to-list 'evil-emacs-state-modes 'aria2-mode))
+    (with-eval-after-load 'evil-maps
+      (define-key aria2-mode-map "\C-w" 'evil-window-map))))
 
-(defsubst aria2--get-gid ()
-  (get-text-property  (point) 'tabulated-list-id))
+;; Interactive commands start here
 
-(defun aria2--is-paused-p ()
-  (interactive);;xxxx remove after testing
-  (equal (elt (get-text-property (point) 'tabulated-list-entry) 2) "paused"))
+(defsubst aria2--is-paused-p ()
+  (string= "paused" (car (elt (tabulated-list-get-entry) 1))))
+
+(defsubst aria2--is-running-p ()
+  (not (aria2--is-paused-p)))
 
 (defun aria2-pause ()
   "Pause download."
   (interactive)
-  (pause aria2--cc (aria2--get-gid))
-  ;; pausing requires aria to contact bt trackers,
-  ;; so info about it won't be visible asap, thus we queue up addidtional refreshes
-  (run-with-timer 2 nil #'revert-buffer)
-  (run-with-timer 4 nil #'revert-buffer))
+  (pause aria2--cc (get-text-property (point) 'tabulated-list-id))
+  (message "Pausing download. This may take a moment..."))
 
 (defun aria2-resume ()
   "Resume paused download."
   (interactive)
-  (unpause aria2--cc (aria2--get-gid))
+  (unpause aria2--cc (get-text-property (point) 'tabulated-list-id))
   (revert-buffer))
 
 (defun aria2-toggle-pause ()
@@ -617,6 +615,11 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defconst aria2-supported-file-extension-regexp "\\.\\(?:meta\\(?:4\\|link\\)\\|torrent\\)$"
   "Regexp matching .torrent .meta4 and .metalink files.")
 
+(defun aria2--supported-file-type-p (f)
+  "Supported file predicate. Also allows directories to enable path navigation."
+  (or (file-directory-p f)
+      (string-match-p aria2-supported-file-extension-regexp f)))
+
 (defun aria2-add-file (arg)
   "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files.
 With prefix start search in $HOME."
@@ -625,10 +628,7 @@ With prefix start search in $HOME."
          (expand-file-name
           (read-file-name
            "Choose .meta4, .metalink or .torrent file: "
-           (if (equal arg nil) default-directory "~/") nil nil nil
-           #'(lambda (f)
-               (or (file-directory-p f)
-                   (string-match-p aria2-supported-file-extension-regexp f)))))))
+           (if (equal arg nil) default-directory "~/") nil nil nil 'aria2--supported-file-type-p))))
     (if (or (string-blank-p chosen-file)
             (not (file-exists-p chosen-file)))
         (message "No file selected.")
@@ -637,36 +637,84 @@ With prefix start search in $HOME."
         (addMetalink aria2--cc chosen-file))))
   (revert-buffer))
 
-(defun aria2-add-uris (arg)
-  (interactive "P")
-  (revert-buffer)) ;;TODO - popup buffer with widget list.
+(defvar aria2-dialog-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map widget-keymap)
+    (define-key map [mouse-1] 'widget-button-click)
+    map))
+
+(defvar aria2--url-list-widget nil)
+
+(defconst aria2-supported-url-protocols-regexp "\\(?:ftp://\\|http\\(?:s?://\\)\\|magnet:\\)"
+  "Regexp matching frp, http, https and magnet urls.")
+
+(defconst aria2-url-list-buffer-name  "*aria2: Add http/https/ftp/magnet url(s)*"
+  "Name of a buffer for inputting url's to download.")
+
+(defun aria2-add-uris ()
+  "Display a form for inputting a list of http/https/ftp/magnet URLs."
+  (interactive)
+  (switch-to-buffer (get-buffer-create aria2-url-list-buffer-name))
+  (kill-all-local-variables)
+  (let ((inhibit-read-only t)) (erase-buffer))
+  (remove-overlays)
+  (widget-insert "Please input urls to download.\n\n")
+  (setq aria2--url-list-widget
+        (widget-create 'editable-list
+                       :entry-format "%i %d %v"
+                       :value '("")
+                       '(editable-field
+                         :valid-regexp aria2-supported-url-protocols-regexp
+                         :error "Url does not match supported type."
+                         :value "")))
+  (use-local-map widget-keymap)
+  (widget-insert "\n\n")
+  (widget-create 'push-button
+                 :notify (lambda (&rest ignore)
+                           (setq aria2--url-list-widget nil)
+                           (switch-to-buffer aria2-list-buffer-name)
+                           (kill-buffer aria2-url-list-buffer-name))
+                 "Cancel")
+  (widget-insert "  ")
+  (widget-create 'push-button
+                 :notify (lambda (&rest ignore)
+                           (addUri aria2--cc (widget-value aria2--url-list-widget))
+                           (setq aria2--url-list-widget nil)
+                           (switch-to-buffer aria2-list-buffer-name)
+                           (kill-buffer aria2-url-list-buffer-name))
+                 "Download")
+  (widget-insert "\n")
+  (use-local-map aria2-dialog-map)
+  (widget-setup))
 
 (defun aria2-remove-download (arg)
   "Set download status to 'removed'."
   (interactive "P")
   (when (y-or-n-p "Really remove download? ")
-    (remove-download aria2--cc (aria2--get-gid) (not (equal nil arg)))
-    (aria2-clean-removed-download nil)))
+    (remove-download aria2--cc (get-text-property (point) 'tabulated-list-id) (not (equal nil arg)))
+    (tabulated-list-delete-entry)))
 
 (defun aria2-clean-removed-download (arg)
   "Clean download with 'removed/completed/error' status.
 With prefix remove all applicable downloads."
   (interactive "P")
   (if (equal nil arg)
-      (removeDownloadResult aria2--cc (aria2--get-gid))
-    (purgeDownloadResult aria2--cc))
-  (revert-buffer))
+      (progn
+        (removeDownloadResult aria2--cc (get-text-property (point) 'tabulated-list-id))
+        (revert-buffer))
+    (purgeDownloadResult aria2--cc)
+    (revert-buffer)))
 
 (defun aria2-move-up-in-list (arg)
   "Move item one row up, with prefix move to beginning of list."
   (interactive "P")
-  (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) -1 0) (if (equal nil arg) "POS_CUR" "POS_SET"))
+  (changePosition aria2--cc (get-text-property (point) 'tabulated-list-id) (if (equal nil arg) -1 0) (if (equal nil arg) "POS_CUR" "POS_SET"))
   (revert-buffer))
 
 (defun aria2-move-down-in-list (arg)
   "Move item one row down, with prefix move to end of list."
   (interactive "P")
-  (changePosition aria2--cc (aria2--get-gid) (if (equal nil arg) 1 0) (if (equal nil arg) "POS_CUR" "POS_END"))
+  (changePosition aria2--cc (get-text-property (point) 'tabulated-list-id) (if (equal nil arg) 1 0) (if (equal nil arg) "POS_CUR" "POS_END"))
   (revert-buffer))
 
 (defun aria2-terminate ()
@@ -679,17 +727,14 @@ With prefix remove all applicable downloads."
 
 (easy-menu-define aria2-menu nil "Aria2 Menu"
   `("Aria2"
-    ["Pause" aria2-pause :help "Pause current download"
-     :visble (not (aria2--is-paused-p))]
-    ["Resume" aria2-unpause :help "Resume current download"
-     :visible (aria2--is-paused-p)]
+    ["Pause download" aria2-pause :help "Pause current download" :visble (aria2--is-running-p)]
+    ["Resume download" aria2-unpause :help "Resume current download" :visible (aria2--is-paused-p)]
+    ["Remove download" aria2-remove-download :help "Stop download and remove it."]
+    ["Clean finished" (lambda () (aria2-clean-removed-download t)) :help "Clean all `removed/completed/errored' downloads from list"]
     "--"
-    ["Remove" aria2-remove-download :help "Stop download and remove it."]
-    ["Clean" (lambda () (aria2-clean-removed-download t)) :help "Clean all `removed/completed/errored' downloads from list"]
-    "--"
-    ["Refresh" revert-buffer :help "Reload download list items"]))
+    ["Refresh list" revert-buffer :help "Reload download list items"]))
 
-(defun aria2-context-menu ()
+(defun aria2-show-context-menu ()
   "Show context menu for current item."
   (interactive)
   (popup-menu aria2-menu))
@@ -697,12 +742,10 @@ With prefix remove all applicable downloads."
 (defvar aria2-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map "j" 'next-line)
-    (define-key map "C-n" 'next-line)
     (define-key map "n" 'next-line)
     (define-key map [down] 'next-line)
     (put 'next-line :advertised-binding "n")
     (define-key map "k" 'previous-line)
-    (define-key map "C-p" 'previous-line)
     (define-key map "p" 'previous-line)
     (define-key map [up] 'previous-line)
     (put 'previous-line :advertised-binding "p")
@@ -713,16 +756,15 @@ With prefix remove all applicable downloads."
     (define-key map "_" 'aria2-move-down-in-list)
     (put 'aria2-move-down-in-list :advertised-binding "-")
     (define-key map "g" 'revert-buffer)
-    (define-key map "G" 'revert-buffer)
     (put 'revert-buffer :advertised-binding "g")
     (define-key map "q" 'quit-window)
     (define-key map "Q" 'aria2-terminate)
-    (define-key map "P" 'aria2-toggle-pause)
-    (define-key map "F" 'aria2-add-file)
-    (define-key map "U" 'aria2-add-uris)
+    (define-key map "p" 'aria2-toggle-pause)
+    (define-key map "f" 'aria2-add-file)
+    (define-key map "u" 'aria2-add-uris)
     (define-key map "D" 'aria2-remove-download)
     (define-key map "C" 'aria2-clean-removed-download)
-    (define-key map [mouse-3] 'aria2-context-menu)
+    (define-key map [mouse-3] 'aria2-show-context-menu)
     map)
   "Keymap for `aria2-mode'.")
 
@@ -757,10 +799,8 @@ With prefix remove all applicable downloads."
   (when (not aria2--master-timer)
     (setq aria2--master-timer
           (run-at-time t 5 #'aria2--manage-refresh-timer)))
-  (hl-line-mode 1))
-
-(with-eval-after-load 'evil-states
-  (add-to-list 'evil-emacs-state-modes 'aria2-mode))
+  (hl-line-mode 1)
+  (aria2-maybe-add-vim-quirks))
 
 ;;;###autoload
 (defun aria2-downloads-list ()
