@@ -1,6 +1,6 @@
 # README                                                                                                                    
 ### This is aria2-mode, a major mode for controlling [aria2c](http://aria2.sourceforge.net/) downloader ###
-Currrently supported download types are: bittorrent, magnet, meta4, ftp.http, https files (basically what aria2 supports).
+Currrently supported download types are: bittorrent, magnet, meta4, ftp, http, https files (basically what aria2 supports).
 There is no support for changing global or per-download options, but this is planned.
 
 This mode tries to work well with evil-mode, just set *aria2-add-evil-quirks* to *t*.
