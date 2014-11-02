@@ -1,11 +1,11 @@
-;;; aria2-mode.el --- Control aria2c commandline tool from Emacs
+;;; aria2.el --- Control aria2c commandline tool from Emacs
 
 ;; Copyright (c) 2014 Łukasz Gruner
 
 ;; Author: Łukasz Gruner <lukasz@gruner.lu>
 ;; Maintainer: Łukasz Gruner <lukasz@gruner.lu>
 ;; Version: 1
-;; Package-Requires: ((emacs "24.4")(json "1.4")(eieio "1.4"))
+;; Package-Requires: ((emacs "24.4"))
 ;; URL: https://bitbucket.org/ukaszg/aria2-mode
 ;; Created: 19/10/2014
 ;; Keywords: download bittorrent aria2
@@ -39,9 +39,6 @@
 (require 'url)
 (require 'subr-x)
 (require 'tabulated-list)
-
-(declare-function string-trim "subr-x" (string))
-(declare-function string-join "subr-x" (string &optional separator))
 
 ;;; Customization variables start here.
 
@@ -838,11 +835,11 @@ With prefix remove all applicable downloads."
    (substitute-command-keys
     "Type \\<aria2-mode-map>\\[quit-window] to quit, \\[aria2-terminate] to kill aria, \\[describe-mode] for help")))
 
-(provide 'aria2-mode)
+(provide 'aria2)
 
 ;; Local Variables:
 ;; coding: utf-8-unix
 ;; indent-tabs-mode: nil
 ;; End:
 
-;;; aria2-mode.el ends here
+;;; aria2.el ends here
