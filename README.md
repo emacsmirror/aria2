@@ -25,4 +25,4 @@ This mode tries to work well with evil-mode, just set *aria2-add-evil-quirks* to
 ```
 
 #### Packages ####
-In progress...
+Avaliable at Melpa [![MELPA](http://melpa.org/packages/aria2-badge.svg)](http://melpa.org/#/aria2)
