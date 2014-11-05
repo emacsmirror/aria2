@@ -142,19 +142,6 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :group 'aria2
   :group 'face)
 
-(defvar aria2-mode-line-format
-  (list
-   (propertize "%b" 'face 'mode-line-buffer-id)
-   " "
-   "[" (propertize "f" 'face 'aria2-modeline-key-face) "]:add file "
-   "[" (propertize "u" 'face 'aria2-modeline-key-face) "]:add url "
-   "[" (propertize "D" 'face 'aria2-modeline-key-face) "]:remove download "
-   "[" (propertize "C" 'face 'aria2-modeline-key-face) "]:clear finished "
-   "[" (propertize "q" 'face 'aria2-modeline-key-face) "]:quit window "
-   "[" (propertize "Q" 'face 'aria2-modeline-key-face) "]:kill aria2 "
-   )
-  "Custom mode-line for use with `aria2-mode'.")
-
 ;;; Utils start here.
 
 (defsubst aria2--url ()
@@ -766,6 +753,38 @@ With prefix remove all applicable downloads."
     (shutdown aria2--cc)
     (kill-buffer aria2-list-buffer-name)
     (aria2--stop-timer)))
+
+;; Mode line format starts here
+
+(defvar aria2-mode-line-format
+  (list
+   (propertize "%b" 'face 'mode-line-buffer-id)
+   " "
+   (propertize
+    (concat "[" (propertize "f" 'face 'aria2-modeline-key-face) "]:add file")
+    'local-map (make-mode-line-mouse-map 'mouse-1 'aria2-add-file))
+   " "
+   (propertize
+    (concat "[" (propertize "u" 'face 'aria2-modeline-key-face) "]:add url)")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-add-uris))
+   " "
+   (propertize
+    (concat "[" (propertize "D" 'face 'aria2-modeline-key-face) "]:remove download")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-remove-download))
+   " "
+   (propertize
+    (concat "[" (propertize "C" 'face 'aria2-modeline-key-face) "]:clear finished")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-clean-removed-download))
+   (propertize
+    (concat "[" (propertize "q" 'face 'aria2-modeline-key-face) "]:quit window")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-quit))
+   " "
+   (propertize
+    (concat "[" (propertize "Q" 'face 'aria2-modeline-key-face) "]:kill aria2")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-terminate))
+  "Custom mode-line for use with `aria2-mode'.")
+
+;;; Major mode starts here
 
 (defvar aria2-mode-map
   (let ((map (make-sparse-keymap)))
