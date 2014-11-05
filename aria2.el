@@ -4,7 +4,7 @@
 
 ;; Author: Łukasz Gruner <lukasz@gruner.lu>
 ;; Maintainer: Łukasz Gruner <lukasz@gruner.lu>
-;; Version: 1
+;; Version: 2
 ;; Package-Requires: ((emacs "24.4"))
 ;; URL: https://bitbucket.org/ukaszg/aria2-mode
 ;; Created: 19/10/2014
@@ -28,10 +28,6 @@
 
 ;;; Commentary:
 
-;;; TODOS:
-;; * add modeline variable showing shortcuts, and some basic info
-;; * fix menu
-
 ;;; Code:
 
 (require 'eieio-base)
@@ -39,6 +35,16 @@
 (require 'url)
 (require 'subr-x)
 (require 'tabulated-list)
+
+(unless (fboundp 'alist-get)
+  (defun alist-get (key alist &optional default remove)
+    "Get the value associated to KEY in ALIST.
+DEFAULT is the value to return if KEY is not found in ALIST.
+REMOVE, if non-nil, means that when setting this element, we should
+remove the entry if the new value is `eql' to DEFAULT."
+    (ignore remove) ;;Silence byte-compiler.
+    (let ((x (assq key alist)))
+      (if x (cdr x) default))))
 
 ;;; Customization variables start here.
 
@@ -652,14 +658,13 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
       (string-match-p aria2-supported-file-extension-regexp f)))
 
 (defun aria2-add-file (arg)
-  "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files.
-With prefix start search in $HOME."
+  "Prompt for a file and add it. Supports .torrent .meta4 and .metalink files."
   (interactive "P")
   (let ((chosen-file
          (expand-file-name
           (read-file-name
            "Choose .meta4, .metalink or .torrent file: "
-           (if (equal arg nil) default-directory "~/") nil nil nil 'aria2--supported-file-type-p))))
+           default-directory nil nil nil 'aria2--supported-file-type-p))))
     (if (or (string-blank-p chosen-file)
             (not (file-exists-p chosen-file)))
         (message "No file selected.")
