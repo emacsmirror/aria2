@@ -142,6 +142,14 @@ If nil Emacs will reattach itself to the process on entering downloads list."
   :group 'aria2
   :group 'face)
 
+(defface aria2-modeline-mouse-face `((t :inherit default
+                                        :box (:line-width 2 :style pressed-button)
+                                        :inverse-video t
+                                        :weight bold))
+  "Face for shortcuts hoovered by a pointer."
+  :group 'aria2
+  :group 'face)
+
 ;;; Utils start here.
 
 (defsubst aria2--url ()
@@ -762,26 +770,33 @@ With prefix remove all applicable downloads."
    " "
    (propertize
     (concat "[" (propertize "f" 'face 'aria2-modeline-key-face) "]:add file")
-    'local-map (make-mode-line-mouse-map 'mouse-1 'aria2-add-file))
+    'local-map (make-mode-line-mouse-map 'mouse-1 'aria2-add-file)
+    'mouse-face 'aria2-modeline-mouse-face)
    " "
    (propertize
-    (concat "[" (propertize "u" 'face 'aria2-modeline-key-face) "]:add url)")
-    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-add-uris))
+    (concat "[" (propertize "u" 'face 'aria2-modeline-key-face) "]:add url")
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-add-uris)
+    'mouse-face 'aria2-modeline-mouse-face)
    " "
    (propertize
     (concat "[" (propertize "D" 'face 'aria2-modeline-key-face) "]:remove download")
-    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-remove-download))
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-remove-download)
+    'mouse-face 'aria2-modeline-mouse-face)
    " "
    (propertize
     (concat "[" (propertize "C" 'face 'aria2-modeline-key-face) "]:clear finished")
-    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-clean-removed-download))
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-clean-removed-download)
+    'mouse-face 'aria2-modeline-mouse-face)
+   " "
    (propertize
     (concat "[" (propertize "q" 'face 'aria2-modeline-key-face) "]:quit window")
-    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-quit))
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-quit)
+    'mouse-face 'aria2-modeline-mouse-face)
    " "
    (propertize
     (concat "[" (propertize "Q" 'face 'aria2-modeline-key-face) "]:kill aria2")
-    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-terminate))
+    'local-map (make-mode-line-mouse-map 'mouse1 'aria2-terminate)
+    'mouse-face 'aria2-modeline-mouse-face))
   "Custom mode-line for use with `aria2-mode'.")
 
 ;;; Major mode starts here
