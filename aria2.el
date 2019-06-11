@@ -305,6 +305,8 @@ If nil Emacs will reattach itself to the process on entering downloads list."
         json-response)
     (when aria2--debug (message "SEND: %s" url-request-data))
     (with-current-buffer (url-retrieve-synchronously (oref this rcp-url) t)
+      ;; expect unicode response
+      (set-buffer-multibyte t)
       ;; read last line, where json response is
       (goto-char (point-max))
       (beginning-of-line)
