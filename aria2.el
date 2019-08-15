@@ -305,6 +305,8 @@ If nil Emacs will reattach itself to the process on entering downloads list."
         json-response)
     (when aria2--debug (message "SEND: %s" url-request-data))
     (with-current-buffer (url-retrieve-synchronously (oref this rcp-url) t)
+      ;; expect unicode response
+      (set-buffer-multibyte t)
       ;; read last line, where json response is
       (goto-char (point-max))
       (beginning-of-line)
@@ -467,7 +469,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 (defsubst aria2--list-entries-File (e)
   (let ((bt (alist-get 'bittorrent e)))
     (or (and bt (alist-get 'name (alist-get 'info bt)))
-        (let ((uris (cdr (car (elt (alist-get 'files e) 0)))))
+        (let ((uris (alist-get 'uris (elt (alist-get 'files e) 0))))
           (and (< 0 (length uris)) (file-name-nondirectory (alist-get 'uri (elt uris 0)))))
         "unknown")))
 
@@ -476,7 +478,7 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
 
 (defsubst aria2--list-entries-Type (e)
   (or (and (alist-get 'bittorrent e) "bittorrent")
-      (let ((uris (cdr (car (elt (alist-get 'files (elt (tellStopped aria2--cc 0 3) 0)) 0)))))
+      (let ((uris (alist-get 'uris (elt (alist-get 'files e) 0))))
         (and (< 0 (length uris)) (car-safe (split-string (alist-get 'uri (elt uris 0)) ":"))))
       "unknown"))
 
