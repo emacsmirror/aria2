@@ -6,7 +6,7 @@ There is no support for changing global or per-download options, but this is pla
 This mode tries to work well with evil-mode, just set *aria2-add-evil-quirks* to *t*.
 
 ### How does it look like? ###
-![aria2-mode.png](https://imgur.com/a/bhjDN28)
+![aria2-mode.png](https://i.imgur.com/BH67PEy.png)
 
 ### How do I get set up? ###
 
