@@ -243,7 +243,7 @@ See aria2c manual for supported options."
             :type string
             :docstring "Url on which aria2c listens for JSON RPC requests.")
         (secret :initarg :secret
-            :initform aria2-rcp-secret
+            :initform (concat aria2-rcp-secret)
             :type string
             :docstring "Secret value used for authentication with the aria2c process, for use with --rpc-secret= switch.")
         (pid :initarg :pid
@@ -581,7 +581,7 @@ depending on focus and buffer visibility."
                      (not (eq aria2--current-buffer-refresh-speed :normal)))
                     (retimer aria2-refresh-normal :normal))
                 ((not (eq aria2--current-buffer-refresh-speed :slow)) ; list is in the background
-                    (retimer aria2-refresh-slow :slow)))))))
+                    (retimer aria2-refresh-slow :slow))))))
 
 (defun aria2--stop-timer ()
     "Stop timer if any."
