@@ -71,7 +71,8 @@ If nil Emacs will reattach itself to the process on entering downloads list."
     :group 'aria2)
 
 (defcustom aria2-session-file (expand-file-name "aria2c.session" user-emacs-directory)
-    "Name of session file.  Will be used with \"--save-session\" and \"--input-file\" options."
+    "Name of session file.  Will be used with \"--save-session\"
+and \"--input-file\" options."
     :type 'file
     :group 'aria2)
 
@@ -95,7 +96,8 @@ If nil Emacs will reattach itself to the process on entering downloads list."
     :group 'aria2)
 
 (defcustom aria2-custom-args nil
-    "Additional arguments for aria2c.  This should be a list of strings.  See aria2c manual for supported options."
+    "Additional arguments for aria2c.  This should be a list of strings.
+See aria2c manual for supported options."
     :type '(repeat (string :tag "Commandline argument."))
     :group 'aria2)
 
@@ -564,7 +566,8 @@ Returns a pair of numbers denoting amount of files deleted and files inserted."
     "One of :fast :normal :slow or nil if not refreshing. Used to manage refresh timers.")
 
 (defun aria2--manage-refresh-timer ()
-    "Restarts `aria2--refresh-timer' on different intervals, depending on focus and buffer visibility."
+    "Restarts `aria2--refresh-timer' on different intervals,
+depending on focus and buffer visibility."
     (let ((buf (get-buffer aria2-list-buffer-name)))
         (cl-flet ((retimer (refresh speed)
                       (when aria2--refresh-timer (cancel-timer aria2--refresh-timer))
