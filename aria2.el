@@ -865,7 +865,7 @@ With prefix remove all applicable downloads."
                                        "aria2-controller"
                                        :file aria2-cc-file)))))
     (when aria2-start-rpc-server
-        (run-process this))
+        (run-process aria2--cc))
     ;; kill process or save state on exit
     (if aria2-kill-process-on-emacs-exit
         (add-hook 'kill-emacs-hook 'aria2--kill-on-exit)
