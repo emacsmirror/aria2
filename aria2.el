@@ -670,10 +670,23 @@ depending on focus and buffer visibility."
                 (addMetalink aria2--cc chosen-file))))
     (revert-buffer))
 
-(defvar aria2-dialog-map
+(defun aria2-dialog-cancel ()
+  (interactive)
+  (setq aria2--url-list-widget nil)
+  (switch-to-buffer aria2-list-buffer-name)
+  (kill-buffer aria2-url-list-buffer-name))
+
+(defun aria2-dialog-submit ()
+  (interactive)
+  (addUri aria2--cc (widget-value aria2--url-list-widget))
+  (aria2-dialog-cancel))
+
+(defvar aria2-dialog-mode-map
     (let ((map (make-sparse-keymap)))
         (set-keymap-parent map widget-keymap)
         (define-key map [mouse-1] 'widget-button-click)
+        (define-key map (kbd "C-c C-c") 'aria2-dialog-submit)
+        (define-key map (kbd "C-c C-k") 'aria2-dialog-cancel)
         map))
 
 (defvar aria2--url-list-widget nil)
@@ -695,6 +708,7 @@ depending on focus and buffer visibility."
     (aria2-dialog-mode)
     (let ((inhibit-read-only t)) (erase-buffer))
     (remove-overlays)
+    (setq header-line-format (substitute-command-keys "Add urls, then download with `\\[aria2-dialog-submit]', or cancel with `\\[aria2-dialog-cancel]'"))
     (widget-insert "Please input urls to download.\n\n")
     (widget-insert "Non \"magnet:\" urls must be mirrors pointing to the same file.\n\n")
     (setq aria2--url-list-widget
@@ -721,7 +735,6 @@ depending on focus and buffer visibility."
                     (kill-buffer aria2-url-list-buffer-name))
         "Download")
     (widget-insert "\n")
-    (use-local-map aria2-dialog-map)
     (widget-setup)
     (goto-char (point-min))
     (widget-forward 3))
@@ -849,6 +862,7 @@ With prefix remove all applicable downloads."
             (error (setq aria2--cc (make-instance aria2-controller
                                        "aria2-controller"
                                        :file aria2--cc-file)))))
+    (run-process aria2--cc)
     ;; kill process or save state on exit
     (if aria2-kill-process-on-emacs-exit
         (add-hook 'kill-emacs-hook 'aria2--kill-on-exit)
