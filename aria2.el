@@ -177,10 +177,10 @@ See aria2c manual for supported options."
     "Return base64-encoded string with contents of file on PATH."
     (unless (file-exists-p path)
         (signal 'aria2-err-file-doesnt-exist '(path)))
-    (with-current-buffer (find-file-noselect path)
-        (unwind-protect
-            (base64-encode-string (buffer-string) t)
-            (kill-buffer))))
+    (with-temp-buffer
+        (insert-file-contents-literally path)
+        (base64-encode-region (point-min) (point-max) t)
+        (buffer-string)))
 
 (defun aria2--is-aria-process-p (pid)
     "Returns t if `process-attributes' of PID belongs to aria."
