@@ -338,13 +338,15 @@ See aria2c manual for supported options."
 When sending magnet link, URLS must have only one element."
     (make-request this "aria2.addUri" (vconcat urls)))
 
-(cl-defmethod addTorrent ((this aria2-controller) path)
+(cl-defmethod addTorrent ((this aria2-controller) path &key select-file &key dir)
     "Add PATH pointing at a torrent file to download list."
     (unless (file-exists-p path)
         (signal 'aria2-err-file-doesnt-exist '(path)))
     (unless (string-match-p "\\.torrent$" path)
         (signal 'aria2-err-not-a-torrent-file nil))
-    (make-request this "aria2.addTorrent" (aria2--base64-encode-file path)))
+    (make-request this "aria2.addTorrent" (aria2--base64-encode-file path) []
+                  `(,@(if select-file `(:select-file ,select-file) '())
+                    ,@(if dir `(:dir ,dir) '()))))
 
 (cl-defmethod addMetalink ((this aria2-controller) path)
     "Add local .metalink PATH to download list."
